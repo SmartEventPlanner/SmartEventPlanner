@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}スマートイベントプランナー{% endblock %}</title>
+  <style>
+    :root {
+      --gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 35%, #0e7490 70%, #0ea5e9 100%);
+      --glass: rgba(15, 23, 42, 0.55);
+      --glass-strong: rgba(15, 23, 42, 0.72);
+      --surface: rgba(248, 250, 252, 0.96);
+      --surface-strong: rgba(255, 255, 255, 0.98);
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      --text-inverse: #f8fafc;
+      --accent: #38bdf8;
+      --accent-strong: #0ea5e9;
+      --danger: #f43f5e;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --info: #0ea5e9;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --shadow-lg: 0 35px 60px -30px rgba(15, 23, 42, 0.65);
+      --shadow-md: 0 20px 40px -32px rgba(15, 23, 42, 0.65);
+      --shadow-sm: 0 12px 26px -20px rgba(15, 23, 42, 0.55);
+      color-scheme: light;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'Noto Sans JP', 'Inter', 'Segoe UI', sans-serif;
+      color: var(--text-primary);
+      background: var(--gradient);
+      background-attachment: fixed;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.18), transparent 55%),
+                  radial-gradient(circle at 80% 10%, rgba(14, 165, 233, 0.18), transparent 50%),
+                  radial-gradient(circle at 50% 80%, rgba(56, 189, 248, 0.12), transparent 55%);
+      z-index: -1;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .top-bar {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      padding: 24px 0 12px;
+    }
+
+    .top-bar-inner {
+      width: min(1180px, 92vw);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 28px;
+      background: var(--glass);
+      backdrop-filter: blur(16px);
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      box-shadow: var(--shadow-sm);
+      color: var(--text-inverse);
+    }
+
+    .brand {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+    }
+
+    .brand::before {
+      content: '\1F4C5';
+      font-size: 1.4rem;
+    }
+
+    .header-actions {
+      flex-shrink: 0;
+    }
+
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .nav-link {
+      padding: 0.55rem 1rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      color: var(--text-inverse);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .nav-link:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px -18px rgba(15, 23, 42, 0.7);
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .nav-link-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      color: var(--text-inverse);
+      box-shadow: 0 16px 32px -18px rgba(14, 165, 233, 0.7);
+    }
+
+    .nav-link-outline {
+      border-color: rgba(148, 163, 184, 0.45);
+    }
+
+    .content-area {
+      flex: 1;
+      width: min(1180px, 92vw);
+      margin: 0 auto 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .flash-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 8px;
+    }
+
+    .flash {
+      padding: 14px 18px;
+      border-radius: var(--radius-md);
+      border-left: 5px solid transparent;
+      background: rgba(248, 250, 252, 0.92);
+      box-shadow: var(--shadow-md);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .flash-success { border-color: var(--success); }
+    .flash-danger { border-color: var(--danger); }
+    .flash-warning { border-color: var(--warning); }
+    .flash-info    { border-color: var(--info); }
+
+    .flash-success { color: var(--success); }
+    .flash-danger  { color: var(--danger); }
+    .flash-warning { color: var(--warning); }
+    .flash-info    { color: var(--info); }
+
+    .surface-card {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      padding: 32px 36px;
+      box-shadow: var(--shadow-lg);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      backdrop-filter: blur(18px);
+    }
+
+    .surface-card h1,
+    .surface-card h2,
+    .surface-card h3 {
+      margin-top: 0;
+      color: var(--text-primary);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .surface-card p {
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    .form-card {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 36px 42px;
+      background: var(--surface-strong);
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px 22px;
+    }
+
+    .input-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="date"],
+    input[type="time"],
+    input[type="datetime-local"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      background: rgba(255, 255, 255, 0.94);
+      font-size: 1rem;
+      color: var(--text-primary);
+      transition: border 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent-strong);
+      box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15);
+    }
+
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+
+    .checkbox-field {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    input[type="checkbox"],
+    input[type="radio"] {
+      width: auto;
+      accent-color: var(--accent-strong);
+    }
+
+    .btn,
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0.75rem 1.4rem;
+      border-radius: 999px;
+      border: none;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      color: var(--text-inverse);
+      box-shadow: 0 18px 35px -20px rgba(14, 165, 233, 0.75);
+    }
+
+    .btn-secondary {
+      background: rgba(15, 23, 42, 0.85);
+      color: var(--text-inverse);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      color: var(--text-secondary);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #f87171, #ef4444);
+      color: var(--text-inverse);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 20px 40px -25px rgba(15, 23, 42, 0.6);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .inline-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .muted-link {
+      color: var(--text-muted);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .muted-link:hover {
+      color: var(--accent-strong);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface-strong);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-lg);
+    }
+
+    th, td {
+      padding: 16px 18px;
+      text-align: left;
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    thead th {
+      background: rgba(15, 23, 42, 0.85);
+      color: var(--text-inverse);
+      font-size: 0.85rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    tbody tr:hover {
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      background: var(--surface-strong);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      color: var(--text-secondary);
+    }
+
+    .card-section {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .card-tile {
+      background: var(--surface-strong);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-md);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: rgba(14, 165, 233, 0.15);
+      color: var(--accent-strong);
+    }
+
+    .app-footer {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      padding: 24px 0 40px;
+      color: rgba(226, 232, 240, 0.7);
+      font-size: 0.85rem;
+    }
+
+    .app-footer span {
+      background: rgba(15, 23, 42, 0.45);
+      padding: 10px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      backdrop-filter: blur(14px);
+    }
+
+    @media (max-width: 768px) {
+      .top-bar {
+        padding: 18px 0 8px;
+      }
+
+      .top-bar-inner {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+      }
+
+      .content-area {
+        width: min(640px, 92vw);
+      }
+
+      .form-card {
+        padding: 28px 24px;
+      }
+
+      table,
+      thead,
+      tbody,
+      th,
+      td,
+      tr {
+        display: block;
+        width: 100%;
+      }
+
+      thead { display: none; }
+
+      tbody tr {
+        margin-bottom: 18px;
+        background: var(--surface-strong);
+        padding: 16px;
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-md);
+      }
+
+      tbody td {
+        border: none;
+        padding: 6px 0;
+      }
+
+      tbody td::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+      }
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top-bar">
+      <div class="top-bar-inner">
+        <a class="brand" href="{{ url_for('calendar') if session.get('user_id') else url_for('index') }}">Smart Event Planner</a>
+        <div class="header-actions">
+          {% block header_actions %}
+            {% if session.get('user_id') %}
+              <nav class="nav-links">
+                <a class="nav-link" href="{{ url_for('calendar') }}">カレンダー</a>
+                <a class="nav-link" href="{{ url_for('create') }}">予定登録</a>
+                <a class="nav-link" href="{{ url_for('invite') }}">招待作成</a>
+                <a class="nav-link" href="{{ url_for('invite_list') }}">招待リスト</a>
+                <a class="nav-link nav-link-outline" href="{{ url_for('logout') }}">ログアウト</a>
+              </nav>
+            {% else %}
+              <nav class="nav-links">
+                <a class="nav-link" href="{{ url_for('login') }}">ログイン</a>
+                <a class="nav-link nav-link-primary" href="{{ url_for('register') }}">新規登録</a>
+              </nav>
+            {% endif %}
+          {% endblock %}
+        </div>
+      </div>
+    </header>
+
+    <main class="content-area">
+      {% block flashes %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-stack">
+              {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+      {% endblock %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="app-footer">
+      <span>Smart Event Planner</span>
+    </footer>
+  </div>
+
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>
