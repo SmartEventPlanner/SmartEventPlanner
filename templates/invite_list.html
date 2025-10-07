@@ -12,37 +12,12 @@
       <a class="btn btn-primary" href="{{ url_for('invite') }}">新しい招待を作成</a>
     </div>
 
-    {% if events %}
-      <table>
-        <thead>
-          <tr>
-            <th>タイトル</th>
-            <th>作成日</th>
-            <th>参加状況</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for ev in events %}
-            <tr>
-              <td data-label="タイトル">{{ ev.title }}</td>
-              <td data-label="作成日">{{ ev.created_on }}</td>
-              <td data-label="参加状況">{{ ev.attending }} / {{ ev.pending }} / {{ ev.total }}</td>
-              <td data-label="操作">
-                <div class="inline-actions">
-                  <a class="muted-link" href="{{ url_for('event_results', event_id=ev.id) }}">詳細</a>
-                  <a class="muted-link" href="{{ url_for('finalize_event', event_id=ev.id) }}">予定決定</a>
-                </div>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
+
       <div class="empty-state">
         <h3>まだ招待を作成していません</h3>
         <p>「新しい招待を作成」から候補日程を共有してみましょう。</p>
       </div>
+
     {% endif %}
   </section>
 {% endblock %}

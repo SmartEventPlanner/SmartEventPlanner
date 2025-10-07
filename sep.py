@@ -122,6 +122,15 @@ def send_email(recipient, subject, body):
         print(f"メール送信エラー: {e}")
         return False
 
+
+def send_invitation_email(invitee_email, event_title, organizer_email, respond_url):
+    subject = f"【出欠確認】{event_title}"
+    body = f"""
+    <p>{organizer_email} さんからの招待です。</p>
+    <p><a href=\"{respond_url}\">こちら</a> からご回答ください。</p>
+    """
+    send_email(invitee_email, subject, body)
+
 # ────────────────────────── 認証ルート（register / confirm / login / logout） ──────────────────────────
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -259,6 +268,7 @@ def invite():
         event_id = cur.lastrowid
 
         emails = request.form.getlist('emails[]')
+        sent_count = 0
         for email in emails:
             if not email:
                 continue
@@ -268,13 +278,9 @@ def invite():
             db.commit()
 
             url_ = url_for('respond', token=token, _external=True)
-            subject = f"【出欠確認】{request.form['event-title']}"
-            body = f"""
-            <p>{session['user_email']} さんからの招待です。</p>
-            <p><a href="{url_}">こちら</a> からご回答ください。</p>
-            """
-            send_email(email, subject, body)
-        flash(f'{len(emails)}名に招待を送信しました。', 'success')
+            send_invitation_email(email, request.form['event-title'], session['user_email'], url_)
+            sent_count += 1
+        flash(f'{sent_count}名に招待を送信しました。', 'success')
         return redirect(url_for('invite_list'))
     return render_template('create-invite.html')
 
@@ -401,8 +407,9 @@ def event_results(event_id):
 @login_required
 def invite_list():
     db = get_db()
-    events = db.execute('''
+    event_rows = db.execute('''
         SELECT e.id, e.title, date(e.created_at) AS created_on,
+               e.start_datetime, e.end_datetime, e.status,
                (SELECT COUNT(*) FROM invitees WHERE event_id=e.id)                     AS total,
                (SELECT COUNT(*) FROM invitees WHERE event_id=e.id AND status='attending') AS attending,
                (SELECT COUNT(*) FROM invitees WHERE event_id=e.id AND status='pending')   AS pending
@@ -410,7 +417,143 @@ def invite_list():
          WHERE organizer_id=?
          ORDER BY e.created_at DESC
     ''', (session['user_id'],)).fetchall()
-    return render_template('invite_list.html', events=events)
+
+    event_ids = [row['id'] for row in event_rows]
+    invitees_map = {event_id: [] for event_id in event_ids}
+
+    if event_ids:
+        placeholders = ','.join('?' for _ in event_ids)
+        invitee_rows = db.execute(
+            f'''SELECT id, event_id, email, status, responded_at, token
+                  FROM invitees
+                 WHERE event_id IN ({placeholders})
+                 ORDER BY email COLLATE NOCASE''',
+            event_ids
+        ).fetchall()
+        status_labels = {
+            'pending': '未回答',
+            'attending': '参加',
+            'declined': '不参加'
+        }
+        for inv in invitee_rows:
+            invitees_map[inv['event_id']].append({
+                'id': inv['id'],
+                'email': inv['email'],
+                'status': inv['status'],
+                'status_label': status_labels.get(inv['status'], '不明'),
+                'responded_at': inv['responded_at'],
+                'token': inv['token']
+            })
+
+    categorized = {
+        'pending': [],
+        'confirmed': [],
+        'past': []
+    }
+
+    now = datetime.utcnow()
+    for row in event_rows:
+        event_dict = dict(row)
+        start_dt = datetime.fromisoformat(row['start_datetime']) if row['start_datetime'] else None
+        end_dt = datetime.fromisoformat(row['end_datetime']) if row['end_datetime'] else None
+        event_dict['start_display'] = start_dt.strftime('%Y年%m月%d日 %H:%M') if start_dt else '-'
+        event_dict['end_display'] = end_dt.strftime('%Y年%m月%d日 %H:%M') if end_dt else None
+        event_dict['invitees'] = invitees_map.get(row['id'], [])
+
+        if row['status'] == 'confirmed':
+            if start_dt and start_dt < now:
+                categorized['past'].append(event_dict)
+            else:
+                categorized['confirmed'].append(event_dict)
+        else:
+            categorized['pending'].append(event_dict)
+
+    return render_template('invite_list.html', categorized_events=categorized)
+
+
+@app.route('/invites/<int:event_id>', methods=['POST'])
+@login_required
+def manage_invitees(event_id):
+    db = get_db()
+    event = db.execute(
+        'SELECT * FROM events WHERE id=? AND organizer_id=?',
+        (event_id, session['user_id'])
+    ).fetchone()
+    if not event:
+        flash('イベントが見つからないか、権限がありません。', 'danger')
+        return redirect(url_for('invite_list'))
+
+    action = request.form.get('action')
+    organizer_email = session.get('user_email', '')
+
+    if action == 'resend':
+        invitee_ids = request.form.getlist('invitee_ids')
+        if not invitee_ids:
+            flash('再送する宛先を選択してください。', 'warning')
+            return redirect(url_for('invite_list'))
+
+        placeholders = ','.join('?' for _ in invitee_ids)
+        rows = db.execute(
+            f'''SELECT email, token FROM invitees
+                   WHERE event_id=? AND id IN ({placeholders})''',
+            [event_id, *invitee_ids]
+        ).fetchall()
+
+        for row in rows:
+            respond_url = url_for('respond', token=row['token'], _external=True)
+            send_invitation_email(row['email'], event['title'], organizer_email, respond_url)
+
+        flash(f'{len(rows)} 件の招待を再送しました。', 'success')
+        return redirect(url_for('invite_list'))
+
+    if action == 'add':
+        raw_text = request.form.get('new_emails', '')
+        if not raw_text.strip():
+            flash('追加するメールアドレスを入力してください。', 'warning')
+            return redirect(url_for('invite_list'))
+
+        normalized = raw_text.replace('\r', '\n').replace(',', '\n')
+        candidates = [line.strip() for line in normalized.split('\n') if line.strip()]
+        if not candidates:
+            flash('有効なメールアドレスが見つかりませんでした。', 'warning')
+            return redirect(url_for('invite_list'))
+
+        existing_emails = {
+            row['email'] for row in db.execute(
+                'SELECT email FROM invitees WHERE event_id=?',
+                (event_id,)
+            ).fetchall()
+        }
+
+        added = 0
+        skipped = 0
+        for email in candidates:
+            if email in existing_emails:
+                skipped += 1
+                continue
+            token = secrets.token_urlsafe(16)
+            db.execute(
+                'INSERT INTO invitees(event_id,email,token) VALUES(?,?,?)',
+                (event_id, email, token)
+            )
+            respond_url = url_for('respond', token=token, _external=True)
+            send_invitation_email(email, event['title'], organizer_email, respond_url)
+            added += 1
+            existing_emails.add(email)
+
+        db.commit()
+
+        if added:
+            msg = f'{added} 件のメールアドレスを追加し、招待を送信しました。'
+            if skipped:
+                msg += f' （{skipped} 件は既に招待済みでした）'
+            flash(msg, 'success')
+        else:
+            flash('すべてのメールアドレスが既に招待済みでした。', 'info')
+        return redirect(url_for('invite_list'))
+
+    flash('無効な操作です。', 'danger')
+    return redirect(url_for('invite_list'))
 
 # ────────────────────────── 予定確定 ──────────────────────────
 @app.route('/event/<int:event_id>/finalize', methods=['GET', 'POST'])
@@ -462,6 +605,28 @@ def finalize_event(event_id):
         """, (new_title, start_dt.isoformat(), end_dt.isoformat(), event_id))
         db.commit()
 
+        # カレンダーへ自動追加／更新
+        event_date = start_dt.date().isoformat()
+        start_time = start_dt.strftime('%H:%M')
+        end_time = end_dt.strftime('%H:%M')
+        description = f'イベントID {event_id} の確定予定'
+        existing_schedule = db.execute(
+            'SELECT id FROM schedules WHERE user_id=? AND description=?',
+            (session['user_id'], description)
+        ).fetchone()
+
+        if existing_schedule:
+            db.execute(
+                'UPDATE schedules SET title=?, event_date=?, start_time=?, end_time=? WHERE id=?',
+                (new_title, event_date, start_time, end_time, existing_schedule['id'])
+            )
+        else:
+            db.execute('''
+                INSERT INTO schedules(user_id,title,event_date,start_time,end_time,is_all_day,location,description)
+                VALUES(?,?,?,?,?,?,?,?)
+            ''', (session['user_id'], new_title, event_date, start_time, end_time, 0, '', description))
+        db.commit()
+
         # 出席予定者メール一覧
         attendees = db.execute("""
             SELECT email FROM invitees
@@ -483,7 +648,7 @@ def finalize_event(event_id):
         for row in attendees:
             send_email(row['email'], subject, body)
 
-        flash(f'決定メールを {len(attendees)} 名に送信しました。', 'success')
+        flash(f'決定メールを {len(attendees)} 名に送信しました。カレンダーにも追加済みです。', 'success')
         return redirect(url_for('invite_list'))
 
     # ───────── GET ─────────
