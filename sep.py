@@ -1534,6 +1534,7 @@ def finalize_event(event_id):
         details=[{'time': c['display'], 'count': c['count']} for c in choices]  # 旧テンプレ互換
     )
 # ─────────────────── メイン ───────────────────
+# ─────────────────── メイン ───────────────────
 if __name__ == '__main__':
     init_db()
 
@@ -1550,3 +1551,4 @@ if __name__ == '__main__':
         ssl_context=ssl_context,
         debug=False             # 本番で使う場合は False に
     )
+
