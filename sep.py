@@ -5,7 +5,7 @@ import random
 import secrets
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta, time, date
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 
 from flask import (Flask, render_template, request, flash, redirect,
                    url_for, g, session)
@@ -62,6 +62,15 @@ def init_db():
           status TEXT DEFAULT 'pending',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(organizer_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS event_slots(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id INTEGER NOT NULL,
+          start_datetime TEXT NOT NULL,
+          end_datetime TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(event_id) REFERENCES events(id)
         );
 
         CREATE TABLE IF NOT EXISTS invitees(
@@ -121,6 +130,15 @@ def send_email(recipient, subject, body):
     except Exception as e:
         print(f"メール送信エラー: {e}")
         return False
+
+
+def send_invitation_email(invitee_email, event_title, organizer_email, respond_url):
+    subject = f"【出欠確認】{event_title}"
+    body = f"""
+    <p>{organizer_email} さんからの招待です。</p>
+    <p><a href=\"{respond_url}\">こちら</a> からご回答ください。</p>
+    """
+    send_email(invitee_email, subject, body)
 
 # ────────────────────────── 認証ルート（register / confirm / login / logout） ──────────────────────────
 @app.route('/register', methods=['GET', 'POST'])
@@ -242,39 +260,91 @@ def create():
 @login_required
 def invite():
     if request.method == 'POST':
-        sd = request.form['start-date']   # YYYY-MM-DD
-        ed = request.form['end-date']
-        st = request.form['start-time']   # HH:MM
-        et = request.form['end-time']
+        raw_dates = request.form.getlist('slot-date[]')
+        raw_start_times = request.form.getlist('slot-start[]')
+        raw_end_times   = request.form.getlist('slot-end[]')
 
-        start_dt = f"{sd}T{st}"
-        end_dt   = f"{ed}T{et}"
+        slots = []
+        for idx, date_raw in enumerate(raw_dates):
+            date_raw = (date_raw or '').strip()
+            if not date_raw:
+                continue
+
+            try:
+                slot_date = datetime.strptime(date_raw, '%Y-%m-%d').date()
+            except ValueError:
+                flash('候補日の形式が正しくありません。', 'danger')
+                return redirect(request.url)
+
+            start_time_raw = raw_start_times[idx] if idx < len(raw_start_times) else ''
+            end_time_raw   = raw_end_times[idx] if idx < len(raw_end_times) else ''
+
+            start_time_raw = (start_time_raw or '').strip()
+            end_time_raw   = (end_time_raw or '').strip()
+
+            if (start_time_raw and not end_time_raw) or (end_time_raw and not start_time_raw):
+                flash('開始時間と終了時間は両方入力してください。', 'warning')
+                return redirect(request.url)
+
+            if start_time_raw:
+                try:
+                    start_time = datetime.strptime(start_time_raw, '%H:%M').time()
+                    end_time   = datetime.strptime(end_time_raw, '%H:%M').time()
+                except ValueError:
+                    flash('時間の形式が正しくありません。', 'danger')
+                    return redirect(request.url)
+
+                start_dt = datetime.combine(slot_date, start_time)
+                end_dt   = datetime.combine(slot_date, end_time)
+            else:
+                start_dt = datetime.combine(slot_date, time.min)
+                end_dt   = datetime.combine(slot_date, time(23, 59))
+
+            if end_dt <= start_dt:
+                flash('終了時間は開始時間より後に設定してください。', 'warning')
+                return redirect(request.url)
+
+            slots.append({
+                'start': start_dt,
+                'end': end_dt,
+                'start_iso': start_dt.isoformat(),
+                'end_iso': end_dt.isoformat(),
+            })
+
+        if not slots:
+            flash('候補日を最低1つ追加してください。', 'warning')
+            return redirect(request.url)
+
+        slots.sort(key=lambda x: x['start'])
 
         db   = get_db()
         cur  = db.execute('''
             INSERT INTO events(organizer_id,title,start_datetime,end_datetime)
             VALUES(?,?,?,?)
-        ''', (session['user_id'], request.form['event-title'], start_dt, end_dt))
-        db.commit()
+        ''', (session['user_id'], request.form['event-title'], slots[0]['start_iso'], slots[0]['end_iso']))
         event_id = cur.lastrowid
 
+        for slot in slots:
+            db.execute('''
+                INSERT INTO event_slots(event_id,start_datetime,end_datetime)
+                VALUES(?,?,?)
+            ''', (event_id, slot['start_iso'], slot['end_iso']))
+
         emails = request.form.getlist('emails[]')
+        sent_count = 0
         for email in emails:
             if not email:
                 continue
             token = secrets.token_urlsafe(16)
             db.execute('INSERT INTO invitees(event_id,email,token) VALUES(?,?,?)',
                        (event_id, email, token))
-            db.commit()
 
             url_ = url_for('respond', token=token, _external=True)
-            subject = f"【出欠確認】{request.form['event-title']}"
-            body = f"""
-            <p>{session['user_email']} さんからの招待です。</p>
-            <p><a href="{url_}">こちら</a> からご回答ください。</p>
-            """
-            send_email(email, subject, body)
-        flash(f'{len(emails)}名に招待を送信しました。', 'success')
+            send_invitation_email(email, request.form['event-title'], session['user_email'], url_)
+            sent_count += 1
+
+        db.commit()
+        flash(f'{sent_count}名に招待を送信しました。', 'success')
         return redirect(url_for('invite_list'))
     return render_template('create-invite.html')
 
@@ -287,6 +357,12 @@ def respond(token):
         return "無効なリンクです。", 404
     event = db.execute('SELECT * FROM events WHERE id=?', (invitee['event_id'],)).fetchone()
 
+    slot_rows = db.execute(
+        'SELECT start_datetime, end_datetime FROM event_slots WHERE event_id=? ORDER BY start_datetime',
+        (event['id'],)
+    ).fetchall()
+    use_defined_slots = bool(slot_rows)
+
     # POST 処理
     if request.method == 'POST':
         action = request.form.get('action')
@@ -297,7 +373,11 @@ def respond(token):
             return "<h2>不参加で受け付けました。</h2>"
         if action == 'attend':
             db.execute('DELETE FROM responses WHERE invitee_id=?', (invitee['id'],))
-            for slot in request.form.getlist('available_slots'):
+            available_slots = request.form.getlist('available_slots')
+            valid_slots = set(row['start_datetime'] for row in slot_rows) if use_defined_slots else None
+            for slot in available_slots:
+                if use_defined_slots and slot not in valid_slots:
+                    continue
                 db.execute('INSERT INTO responses(invitee_id,available_slot) VALUES(?,?)',
                            (invitee['id'], slot))
             db.execute('UPDATE invitees SET status=\"attending\", responded_at=? WHERE id=?',
@@ -306,20 +386,34 @@ def respond(token):
             return "<h2>ご回答ありがとうございました！</h2>"
 
     # 時間帯フィルタ
-    start_dt = datetime.fromisoformat(event['start_datetime'])
-    end_dt   = datetime.fromisoformat(event['end_datetime'])
-    daily_start = start_dt.hour
-    daily_end   = end_dt.hour
+    slots = OrderedDict()
+    if use_defined_slots:
+        for row in slot_rows:
+            start_dt = datetime.fromisoformat(row['start_datetime'])
+            end_dt   = datetime.fromisoformat(row['end_datetime'])
+            day_key = start_dt.strftime('%Y年%m月%d日 (%a)')
+            slots.setdefault(day_key, [])
+            slots[day_key].append({
+                'value': row['start_datetime'],
+                'display': f"{start_dt.strftime('%H:%M')}〜{end_dt.strftime('%H:%M')}"
+            })
+    else:
+        start_dt = datetime.fromisoformat(event['start_datetime'])
+        end_dt   = datetime.fromisoformat(event['end_datetime'])
+        daily_start = start_dt.hour
+        daily_end   = end_dt.hour
 
-    slots = defaultdict(list)
-    cur_day = start_dt.date()
-    while cur_day <= end_dt.date():
-        for h in range(daily_start, daily_end):
-            slot_dt = datetime.combine(cur_day, time(h))
-            day_key = slot_dt.strftime('%Y年%m月%d日 (%a)')
-            slots[day_key].append({'value': slot_dt.isoformat(),
-                                   'display': slot_dt.strftime('%H:%M')})
-        cur_day += timedelta(days=1)
+        cur_day = start_dt.date()
+        while cur_day <= end_dt.date():
+            for h in range(daily_start, daily_end):
+                slot_dt = datetime.combine(cur_day, time(h))
+                day_key = slot_dt.strftime('%Y年%m月%d日 (%a)')
+                slots.setdefault(day_key, [])
+                slots[day_key].append({
+                    'value': slot_dt.isoformat(),
+                    'display': f"{slot_dt.strftime('%H:%M')} 開始"
+                })
+            cur_day += timedelta(days=1)
 
     return render_template('respond.html', event=event,
                            time_slots=slots, token=token)
@@ -328,7 +422,7 @@ def respond(token):
 def find_best_schedule(event_id):
     """
     responses / invitees テーブルから
-      - 各 1 時間スロットの参加可能人数
+      - 各候補日時の参加可能人数
       - 最も参加人数が多いスロット
       - 参加率
     を計算して辞書で返す。
@@ -336,13 +430,16 @@ def find_best_schedule(event_id):
     """
     db = get_db()
 
-    # 招待人数
     total_invitees = db.execute(
         'SELECT COUNT(*) FROM invitees WHERE event_id = ?',
         (event_id,)
     ).fetchone()[0]
 
-    # 参加可回答
+    slot_rows = db.execute(
+        'SELECT start_datetime, end_datetime FROM event_slots WHERE event_id=? ORDER BY start_datetime',
+        (event_id,)
+    ).fetchall()
+
     responses = db.execute('''
         SELECT r.available_slot
           FROM responses r
@@ -350,36 +447,86 @@ def find_best_schedule(event_id):
          WHERE i.event_id = ? AND i.status = 'attending'
     ''', (event_id,)).fetchall()
 
-    # ❶ まだ誰も回答していない場合
-    if not responses:
+    if slot_rows:
+        counts = {row['start_datetime']: 0 for row in slot_rows}
+        for res in responses:
+            if res['available_slot'] in counts:
+                counts[res['available_slot']] += 1
+
+        details = []
+        for row in slot_rows:
+            start_dt = datetime.fromisoformat(row['start_datetime'])
+            end_dt = datetime.fromisoformat(row['end_datetime'])
+            date_label = start_dt.strftime('%Y年%m月%d日 (%a)')
+            time_label = f"{start_dt.strftime('%H:%M')}〜{end_dt.strftime('%H:%M')}"
+            details.append({
+                'time': f"{date_label} {time_label}",
+                'count': counts[row['start_datetime']],
+                'start_iso': row['start_datetime'],
+                'end_iso': row['end_datetime'],
+                'date_label': date_label,
+                'time_label': time_label
+            })
+
+        if not responses:
+            return {
+                'message': 'まだ参加者から候補日時が集まっていません。',
+                'total_invitees': total_invitees,
+                'details': details
+            }
+
+        best_detail = max(
+            details,
+            key=lambda d: (d['count'], -datetime.fromisoformat(d['start_iso']).timestamp())
+        )
+        max_attendees = best_detail['count']
+
         return {
-            "message": "まだ参加者から候補日時が集まっていません。",
-            "total_invitees": total_invitees,
-            "details": []          # 空配列を返しておくのがポイント
+            'best_schedule': best_detail['time'],
+            'attendees': max_attendees,
+            'total_invitees': total_invitees,
+            'participation_rate': f"{(max_attendees / total_invitees * 100):.1f}%" if total_invitees else '0%',
+            'details': details
         }
 
-    # ❷ スロットごとに人数をカウント
+    if not responses:
+        return {
+            'message': 'まだ参加者から候補日時が集まっていません。',
+            'total_invitees': total_invitees,
+            'details': []
+        }
+
     from collections import defaultdict
     slot_counts = defaultdict(int)
     for res in responses:
         slot_dt = datetime.fromisoformat(res['available_slot'])
-        key = slot_dt.strftime("%Y年%m月%d日 %H:%M")
-        slot_counts[key] += 1
+        slot_counts[res['available_slot']] += 1
 
-    # 人数の多い順に並べ替え
     sorted_slots = sorted(slot_counts.items(), key=lambda x: x[1], reverse=True)
-    best_slot, max_attendees = sorted_slots[0]
+    best_iso, max_attendees = sorted_slots[0]
 
-    details = [{"time": k, "count": v} for k, v in sorted_slots]
+    details = []
+    for iso, count in sorted_slots:
+        slot_dt = datetime.fromisoformat(iso)
+        date_label = slot_dt.strftime('%Y年%m月%d日 (%a)')
+        time_label = f"{slot_dt.strftime('%H:%M')}〜{(slot_dt + timedelta(hours=1)).strftime('%H:%M')}"
+        details.append({
+            'time': f"{date_label} {time_label}",
+            'count': count,
+            'start_iso': iso,
+            'end_iso': (slot_dt + timedelta(hours=1)).isoformat(),
+            'date_label': date_label,
+            'time_label': time_label
+        })
 
-    # ❸ 結果を辞書で返す
     return {
-        "best_schedule": best_slot,
-        "attendees": max_attendees,
-        "total_invitees": total_invitees,
-        "participation_rate": f"{(max_attendees / total_invitees * 100):.1f}%" if total_invitees else "0%",
-        "details": details
+        'best_schedule': details[0]['time'],
+        'attendees': max_attendees,
+        'total_invitees': total_invitees,
+        'participation_rate': f"{(max_attendees / total_invitees * 100):.1f}%" if total_invitees else '0%',
+        'details': details
     }
+
 
 # ────────────────────────── 結果表示 ──────────────────────────
 @app.route('/event/<int:event_id>/results')
@@ -401,8 +548,9 @@ def event_results(event_id):
 @login_required
 def invite_list():
     db = get_db()
-    events = db.execute('''
+    event_rows = db.execute('''
         SELECT e.id, e.title, date(e.created_at) AS created_on,
+               e.start_datetime, e.end_datetime, e.status,
                (SELECT COUNT(*) FROM invitees WHERE event_id=e.id)                     AS total,
                (SELECT COUNT(*) FROM invitees WHERE event_id=e.id AND status='attending') AS attending,
                (SELECT COUNT(*) FROM invitees WHERE event_id=e.id AND status='pending')   AS pending
@@ -410,7 +558,165 @@ def invite_list():
          WHERE organizer_id=?
          ORDER BY e.created_at DESC
     ''', (session['user_id'],)).fetchall()
-    return render_template('invite_list.html', events=events)
+
+    event_ids = [row['id'] for row in event_rows]
+    invitees_map = {event_id: [] for event_id in event_ids}
+
+    if event_ids:
+        placeholders = ','.join('?' for _ in event_ids)
+        invitee_rows = db.execute(
+            f'''SELECT id, event_id, email, status, responded_at, token
+                  FROM invitees
+                 WHERE event_id IN ({placeholders})
+                 ORDER BY email COLLATE NOCASE''',
+            event_ids
+        ).fetchall()
+        status_labels = {
+            'pending': '未回答',
+            'attending': '参加',
+            'declined': '不参加'
+        }
+        for inv in invitee_rows:
+            invitees_map[inv['event_id']].append({
+                'id': inv['id'],
+                'email': inv['email'],
+                'status': inv['status'],
+                'status_label': status_labels.get(inv['status'], '不明'),
+                'responded_at': inv['responded_at'],
+                'token': inv['token']
+            })
+
+    categorized = {
+        'pending': [],
+        'confirmed': [],
+        'past': []
+    }
+
+    now = datetime.utcnow()
+    for row in event_rows:
+        event_dict = dict(row)
+        start_dt = datetime.fromisoformat(row['start_datetime']) if row['start_datetime'] else None
+        end_dt = datetime.fromisoformat(row['end_datetime']) if row['end_datetime'] else None
+        event_dict['start_display'] = start_dt.strftime('%Y年%m月%d日 %H:%M') if start_dt else '-'
+        event_dict['end_display'] = end_dt.strftime('%Y年%m月%d日 %H:%M') if end_dt else None
+        event_dict['invitees'] = invitees_map.get(row['id'], [])
+
+        if row['status'] == 'confirmed':
+            if start_dt and start_dt < now:
+                categorized['past'].append(event_dict)
+            else:
+                categorized['confirmed'].append(event_dict)
+        else:
+            categorized['pending'].append(event_dict)
+
+    section_configs = [
+        ('pending', '調整中の招待', 'まだ回答を待っている招待です。進捗を確認し、必要であればリマインドを送りましょう。'),
+        ('confirmed', '決定済みの予定', '開催前の確定した予定です。追加で案内したい宛先があればここから送信できます。'),
+        ('past', '開催済みの予定', 'すでに終了したイベントです。実施履歴としてご確認ください。')
+    ]
+
+    sections = []
+    total_events = 0
+    for key, title, description in section_configs:
+        items = categorized[key]
+        total_events += len(items)
+        sections.append({
+            'key': key,
+            'title': title,
+            'description': description,
+            'entries': items
+        })
+
+    return render_template(
+        'invite_list.html',
+        categorized_sections=sections,
+        total_events=total_events
+    )
+
+
+@app.route('/invites/<int:event_id>', methods=['POST'])
+@login_required
+def manage_invitees(event_id):
+    db = get_db()
+    event = db.execute(
+        'SELECT * FROM events WHERE id=? AND organizer_id=?',
+        (event_id, session['user_id'])
+    ).fetchone()
+    if not event:
+        flash('イベントが見つからないか、権限がありません。', 'danger')
+        return redirect(url_for('invite_list'))
+
+    action = request.form.get('action')
+    organizer_email = session.get('user_email', '')
+
+    if action == 'resend':
+        invitee_ids = request.form.getlist('invitee_ids')
+        if not invitee_ids:
+            flash('再送する宛先を選択してください。', 'warning')
+            return redirect(url_for('invite_list'))
+
+        placeholders = ','.join('?' for _ in invitee_ids)
+        rows = db.execute(
+            f'''SELECT email, token FROM invitees
+                   WHERE event_id=? AND id IN ({placeholders})''',
+            [event_id, *invitee_ids]
+        ).fetchall()
+
+        for row in rows:
+            respond_url = url_for('respond', token=row['token'], _external=True)
+            send_invitation_email(row['email'], event['title'], organizer_email, respond_url)
+
+        flash(f'{len(rows)} 件の招待を再送しました。', 'success')
+        return redirect(url_for('invite_list'))
+
+    if action == 'add':
+        raw_text = request.form.get('new_emails', '')
+        if not raw_text.strip():
+            flash('追加するメールアドレスを入力してください。', 'warning')
+            return redirect(url_for('invite_list'))
+
+        normalized = raw_text.replace('\r', '\n').replace(',', '\n')
+        candidates = [line.strip() for line in normalized.split('\n') if line.strip()]
+        if not candidates:
+            flash('有効なメールアドレスが見つかりませんでした。', 'warning')
+            return redirect(url_for('invite_list'))
+
+        existing_emails = {
+            row['email'] for row in db.execute(
+                'SELECT email FROM invitees WHERE event_id=?',
+                (event_id,)
+            ).fetchall()
+        }
+
+        added = 0
+        skipped = 0
+        for email in candidates:
+            if email in existing_emails:
+                skipped += 1
+                continue
+            token = secrets.token_urlsafe(16)
+            db.execute(
+                'INSERT INTO invitees(event_id,email,token) VALUES(?,?,?)',
+                (event_id, email, token)
+            )
+            respond_url = url_for('respond', token=token, _external=True)
+            send_invitation_email(email, event['title'], organizer_email, respond_url)
+            added += 1
+            existing_emails.add(email)
+
+        db.commit()
+
+        if added:
+            msg = f'{added} 件のメールアドレスを追加し、招待を送信しました。'
+            if skipped:
+                msg += f' （{skipped} 件は既に招待済みでした）'
+            flash(msg, 'success')
+        else:
+            flash('すべてのメールアドレスが既に招待済みでした。', 'info')
+        return redirect(url_for('invite_list'))
+
+    flash('無効な操作です。', 'danger')
+    return redirect(url_for('invite_list'))
 
 # ────────────────────────── 予定確定 ──────────────────────────
 @app.route('/event/<int:event_id>/finalize', methods=['GET', 'POST'])
@@ -438,8 +744,21 @@ def finalize_event(event_id):
     # 参加候補（日本語表示 → ISO 変換）
     choices = []
     for d in result.get('details', []):
-        iso = datetime.strptime(d['time'], '%Y年%m月%d日 %H:%M').isoformat()
-        choices.append({'iso': iso, 'display': d['time'], 'count': d['count']})
+        start_iso = d.get('start_iso')
+        end_iso = d.get('end_iso')
+        if start_iso:
+            iso = start_iso
+            display = d.get('time') or f"{d.get('date_label', '')} {d.get('time_label', '')}".strip()
+        else:
+            try:
+                iso = datetime.strptime(d['time'], '%Y年%m月%d日 %H:%M').isoformat()
+            except (KeyError, ValueError):
+                continue
+            display = d['time']
+        choices.append({'iso': iso, 'display': display, 'count': d.get('count', 0), 'end_iso': end_iso})
+
+    if result.get('message'):
+        choices = []
 
     # ───────── POST ─────────
     if request.method == 'POST':
@@ -452,7 +771,15 @@ def finalize_event(event_id):
             return redirect(request.url)
 
         start_dt = datetime.fromisoformat(chosen_iso)
-        end_dt   = start_dt + timedelta(hours=1)
+        slot_row = db.execute(
+            'SELECT end_datetime FROM event_slots WHERE event_id=? AND start_datetime=?',
+            (event_id, chosen_iso)
+        ).fetchone()
+        if slot_row:
+            end_dt = datetime.fromisoformat(slot_row['end_datetime'])
+        else:
+            explicit_end = next((c['end_iso'] for c in choices if c['iso'] == chosen_iso and c.get('end_iso')), None)
+            end_dt = datetime.fromisoformat(explicit_end) if explicit_end else start_dt + timedelta(hours=1)
 
         # イベントを confirmed に更新
         db.execute("""
@@ -460,6 +787,28 @@ def finalize_event(event_id):
                SET title=?, start_datetime=?, end_datetime=?, status='confirmed'
              WHERE id=?
         """, (new_title, start_dt.isoformat(), end_dt.isoformat(), event_id))
+        db.commit()
+
+        # カレンダーへ自動追加／更新
+        event_date = start_dt.date().isoformat()
+        start_time = start_dt.strftime('%H:%M')
+        end_time = end_dt.strftime('%H:%M')
+        description = f'イベントID {event_id} の確定予定'
+        existing_schedule = db.execute(
+            'SELECT id FROM schedules WHERE user_id=? AND description=?',
+            (session['user_id'], description)
+        ).fetchone()
+
+        if existing_schedule:
+            db.execute(
+                'UPDATE schedules SET title=?, event_date=?, start_time=?, end_time=? WHERE id=?',
+                (new_title, event_date, start_time, end_time, existing_schedule['id'])
+            )
+        else:
+            db.execute('''
+                INSERT INTO schedules(user_id,title,event_date,start_time,end_time,is_all_day,location,description)
+                VALUES(?,?,?,?,?,?,?,?)
+            ''', (session['user_id'], new_title, event_date, start_time, end_time, 0, '', description))
         db.commit()
 
         # 出席予定者メール一覧
@@ -483,7 +832,7 @@ def finalize_event(event_id):
         for row in attendees:
             send_email(row['email'], subject, body)
 
-        flash(f'決定メールを {len(attendees)} 名に送信しました。', 'success')
+        flash(f'決定メールを {len(attendees)} 名に送信しました。カレンダーにも追加済みです。', 'success')
         return redirect(url_for('invite_list'))
 
     # ───────── GET ─────────
