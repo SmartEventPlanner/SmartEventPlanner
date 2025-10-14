@@ -468,6 +468,29 @@ def invite_list():
         else:
             categorized['pending'].append(event_dict)
 
+    section_configs = [
+        ('pending', '調整中の招待', 'まだ回答を待っている招待です。進捗を確認し、必要であればリマインドを送りましょう。'),
+        ('confirmed', '決定済みの予定', '開催前の確定した予定です。追加で案内したい宛先があればここから送信できます。'),
+        ('past', '開催済みの予定', 'すでに終了したイベントです。実施履歴としてご確認ください。')
+    ]
+
+    sections = []
+    total_events = 0
+    for key, title, description in section_configs:
+        items = categorized[key]
+        total_events += len(items)
+        sections.append({
+            'key': key,
+            'title': title,
+            'description': description,
+            'entries': items
+        })
+
+    return render_template(
+        'invite_list.html',
+        categorized_sections=sections,
+        total_events=total_events
+    )
     return render_template('invite_list.html', categorized_events=categorized)
 
 

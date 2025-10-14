@@ -395,6 +395,136 @@
       border: 1px solid rgba(148, 163, 184, 0.2);
     }
 
+    .event-section {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      margin-bottom: 42px;
+    }
+
+    .section-header h2 {
+      margin-bottom: 4px;
+    }
+
+    .section-description {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .invite-card {
+      background: var(--surface-strong);
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      padding: 24px 28px;
+      box-shadow: var(--shadow-md);
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .invite-card header {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 18px;
+      margin-top: 6px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .meta-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .invite-management {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .invitee-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+
+    .invitee-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      background: rgba(248, 250, 252, 0.7);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      cursor: pointer;
+      transition: border 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .invitee-item:hover {
+      border-color: var(--accent-strong);
+      box-shadow: 0 12px 22px -18px rgba(14, 165, 233, 0.45);
+    }
+
+    .invitee-item input {
+      margin: 0;
+    }
+
+    .invitee-email {
+      font-weight: 600;
+      color: var(--text-primary);
+      flex: 1;
+    }
+
+    .invitee-status {
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+      color: var(--text-secondary);
+    }
+
+    .status-attending { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+    .status-pending   { background: rgba(14, 165, 233, 0.15); color: var(--accent-strong); }
+    .status-declined  { background: rgba(244, 63, 94, 0.15); color: var(--danger); }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .form-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .form-actions .btn {
+      width: 100%;
+    }
+
+    @media (min-width: 640px) {
+      .form-actions {
+        flex-direction: row;
+        align-items: center;
+      }
+
+      .form-actions .btn {
+        flex: 1;
+      }
+    }
+
     .tag {
       display: inline-flex;
       align-items: center;
