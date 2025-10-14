@@ -259,80 +259,77 @@ def create():
 @app.route('/invite', methods=['GET', 'POST'])
 @login_required
 def invite():
-    if request.method == 'POST':
-        raw_starts = request.form.getlist('slot-start[]')
-        raw_ends   = request.form.getlist('slot-end[]')
-
-        slots = []
-        for idx in range(max(len(raw_starts), len(raw_ends))):
-            start_raw = raw_starts[idx] if idx < len(raw_starts) else ''
-            end_raw   = raw_ends[idx] if idx < len(raw_ends) else ''
-            if not start_raw or not end_raw:
-                continue
-            try:
-                start_dt = datetime.strptime(start_raw, '%Y-%m-%dT%H:%M')
-                end_dt   = datetime.strptime(end_raw, '%Y-%m-%dT%H:%M')
+    if request.method == 'POST']:
+        # フロントから来る配列: slot-date[], slot-start[], slot-end[]
         slot_dates  = request.form.getlist('slot-date[]')
         slot_starts = request.form.getlist('slot-start[]')
         slot_ends   = request.form.getlist('slot-end[]')
 
         slots = []
-        for idx, (d, s, e) in enumerate(zip(slot_dates, slot_starts, slot_ends)):
+        for d, s, e in zip(slot_dates, slot_starts, slot_ends):
             if not d or not s or not e:
                 continue
             try:
-                start_dt = datetime.strptime(f"{d} {s}", '%Y-%m-%d %H:%M')
-                end_dt   = datetime.strptime(f"{d} {e}", '%Y-%m-%d %H:%M')
+                start_dt = datetime.strptime(f"{d} {s}", "%Y-%m-%d %H:%M")
+                end_dt   = datetime.strptime(f"{d} {e}", "%Y-%m-%d %H:%M")
             except ValueError:
                 flash('日付または時間の形式が正しくありません。', 'danger')
                 return redirect(request.url)
             if end_dt <= start_dt:
-                flash('終了日時は開始日時より後に設定してください。', 'warning')
                 flash('終了時間は開始時間より後に設定してください。', 'warning')
                 return redirect(request.url)
             slots.append({
-                'start': start_dt,
-                'end': end_dt,
-                'start_iso': start_dt.isoformat(),
-                'end_iso': end_dt.isoformat(),
+                "start_iso": start_dt.isoformat(),
+                "end_iso":   end_dt.isoformat(),
+                "start":     start_dt,
+                "end":       end_dt,
             })
 
         if not slots:
             flash('候補日を最低1つ追加してください。', 'warning')
             return redirect(request.url)
 
-        slots.sort(key=lambda x: x['start'])
+        # 開始時間でソート
+        slots.sort(key=lambda x: x["start"])
 
-        db   = get_db()
-        cur  = db.execute('''
-            INSERT INTO events(organizer_id,title,start_datetime,end_datetime)
-            VALUES(?,?,?,?)
-        ''', (session['user_id'], request.form['event-title'], slots[0]['start_iso'], slots[0]['end_iso']))
+        db = get_db()
+        # イベント本体（とりあえず最初のスロットで代表開始/終了を入れておく）
+        cur = db.execute("""
+            INSERT INTO events(organizer_id, title, start_datetime, end_datetime)
+            VALUES(?, ?, ?, ?)
+        """, (session['user_id'], request.form['event-title'], slots[0]['start_iso'], slots[0]['end_iso']))
         event_id = cur.lastrowid
 
-        for slot in slots:
-            db.execute('''
-                INSERT INTO event_slots(event_id,start_datetime,end_datetime)
-                VALUES(?,?,?)
-            ''', (event_id, slot['start_iso'], slot['end_iso']))
+        # 候補スロットを保存
+        for sl in slots:
+            db.execute("""
+                INSERT INTO event_slots(event_id, start_datetime, end_datetime)
+                VALUES(?, ?, ?)
+            """, (event_id, sl['start_iso'], sl['end_iso']))
 
+        # 招待メール送信
         emails = request.form.getlist('emails[]')
         sent_count = 0
         for email in emails:
+            email = (email or '').strip()
             if not email:
                 continue
             token = secrets.token_urlsafe(16)
-            db.execute('INSERT INTO invitees(event_id,email,token) VALUES(?,?,?)',
-                       (event_id, email, token))
-
-            url_ = url_for('respond', token=token, _external=True)
-            send_invitation_email(email, request.form['event-title'], session['user_email'], url_)
+            db.execute(
+                "INSERT INTO invitees(event_id, email, token) VALUES(?, ?, ?)",
+                (event_id, email, token)
+            )
+            respond_url = url_for('respond', token=token, _external=True)
+            send_invitation_email(email, request.form['event-title'], session['user_email'], respond_url)
             sent_count += 1
 
         db.commit()
         flash(f'{sent_count}名に招待を送信しました。', 'success')
         return redirect(url_for('invite_list'))
+
+    # GET
     return render_template('create-invite.html')
+
 
 # ────────────────────────── 参加回答 ──────────────────────────
 @app.route('/respond/<token>', methods=['GET', 'POST'])
