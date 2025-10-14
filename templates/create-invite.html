@@ -22,6 +22,9 @@
       grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
       align-items: center;
       gap: 12px;
+      grid-template-columns: 1.1fr repeat(2, 0.9fr) auto;
+      align-items: center;
+      gap: 10px;
       padding: 14px;
       border-radius: var(--radius-md);
       background: rgba(14, 165, 233, 0.08);
@@ -29,6 +32,14 @@
     }
 
     .slot-row input[type="datetime-local"] {
+    .slot-row .slot-tilde {
+      font-weight: 700;
+      text-align: center;
+      color: var(--accent-strong);
+    }
+
+    .slot-row input[type="date"],
+    .slot-row input[type="time"] {
       width: 100%;
     }
 
@@ -109,6 +120,8 @@
   <section class="surface-card">
     <h1>招待を作成</h1>
     <p>参加候補の日時を複数登録し、参加者に共有します。確定したい候補を追加してください。</p>
+    <p>参加候補日を複数追加し、それぞれに開始・終了時間を設定して参加者に共有します。</p>
+    <p>イベントの候補期間と時間帯を設定し、参加者にメールで招待を送信します。</p>
     <form id="invitation-form" action="{{ url_for('invite') }}" method="post">
       <div class="input-field">
         <label for="event-title">予定のタイトル</label>
@@ -127,6 +140,39 @@
           </div>
         </div>
         <button type="button" class="btn btn-ghost" style="margin-top: 12px;" onclick="addSlotRow()">候補を追加</button>
+        <label for="slot-list">候補日と時間
+          <span class="help-icon" tabindex="0" data-tooltip="候補となる日付を複数登録し、それぞれの開始時間と終了時間を設定してください。参加者にはすべての候補が表示され、回答内容から参加率の高い日を選べます。">i</span>
+        </label>
+        <div id="slot-list" class="slot-list">
+          <div class="slot-row single" data-slot-row>
+            <input type="date" name="slot-date[]" required>
+            <input type="time" name="slot-start[]" required>
+            <span class="slot-tilde">〜</span>
+            <input type="time" name="slot-end[]" required>
+            <button type="button" class="btn btn-ghost slot-remove" onclick="removeSlotRow(this)" aria-label="候補を削除">ー</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost" style="margin-top: 12px;" onclick="addSlotRow()">候補日を追加</button>
+      <div class="form-grid">
+        <div class="input-field">
+          <label for="start-date">開始日</label>
+          <input type="date" id="start-date" name="start-date" required>
+        </div>
+        <div class="input-field">
+          <label for="end-date">終了日</label>
+          <input type="date" id="end-date" name="end-date" required>
+        </div>
+      </div>
+
+      <div class="time-grid" style="margin-bottom: 6px;">
+        <div class="input-field">
+          <label for="start-time">開始時間帯</label>
+          <input type="time" id="start-time" name="start-time" value="20:00" required>
+        </div>
+        <div class="input-field">
+          <label for="end-time">終了時間帯</label>
+          <input type="time" id="end-time" name="end-time" value="22:00" required>
+        </div>
       </div>
 
       <div class="invite-layout">
@@ -171,6 +217,10 @@
       wrapper.innerHTML = `
         <input type="datetime-local" name="slot-start[]" required aria-label="候補開始日時">
         <input type="datetime-local" name="slot-end[]" required aria-label="候補終了日時">
+        <input type="date" name="slot-date[]" required>
+        <input type="time" name="slot-start[]" required>
+        <span class="slot-tilde">〜</span>
+        <input type="time" name="slot-end[]" required>
         <button type="button" class="btn btn-ghost slot-remove" onclick="removeSlotRow(this)" aria-label="候補を削除">ー</button>
       `;
       return wrapper;
