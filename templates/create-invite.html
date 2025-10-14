@@ -19,6 +19,9 @@
 
     .slot-row {
       display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+      align-items: center;
+      gap: 12px;
       grid-template-columns: 1.1fr repeat(2, 0.9fr) auto;
       align-items: center;
       gap: 10px;
@@ -28,6 +31,7 @@
       border: 1px solid rgba(148, 163, 184, 0.25);
     }
 
+    .slot-row input[type="datetime-local"] {
     .slot-row .slot-tilde {
       font-weight: 700;
       text-align: center;
@@ -115,6 +119,7 @@
 {% block content %}
   <section class="surface-card">
     <h1>招待を作成</h1>
+    <p>参加候補の日時を複数登録し、参加者に共有します。確定したい候補を追加してください。</p>
     <p>参加候補日を複数追加し、それぞれに開始・終了時間を設定して参加者に共有します。</p>
     <p>イベントの候補期間と時間帯を設定し、参加者にメールで招待を送信します。</p>
     <form id="invitation-form" action="{{ url_for('invite') }}" method="post">
@@ -124,6 +129,17 @@
       </div>
 
       <div class="input-field">
+        <label for="slot-list">候補日時
+          <span class="help-icon" tabindex="0" data-tooltip="候補となる日時を必要なだけ追加してください。開始と終了を入力することで、同じ日でも異なる時間帯を複数登録できます。">i</span>
+        </label>
+        <div id="slot-list" class="slot-list">
+          <div class="slot-row single" data-slot-row>
+            <input type="datetime-local" name="slot-start[]" required aria-label="候補開始日時">
+            <input type="datetime-local" name="slot-end[]" required aria-label="候補終了日時">
+            <button type="button" class="btn btn-ghost slot-remove" onclick="removeSlotRow(this)" aria-label="候補を削除">ー</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost" style="margin-top: 12px;" onclick="addSlotRow()">候補を追加</button>
         <label for="slot-list">候補日と時間
           <span class="help-icon" tabindex="0" data-tooltip="候補となる日付を複数登録し、それぞれの開始時間と終了時間を設定してください。参加者にはすべての候補が表示され、回答内容から参加率の高い日を選べます。">i</span>
         </label>
@@ -199,6 +215,8 @@
       wrapper.className = 'slot-row';
       wrapper.setAttribute('data-slot-row', '');
       wrapper.innerHTML = `
+        <input type="datetime-local" name="slot-start[]" required aria-label="候補開始日時">
+        <input type="datetime-local" name="slot-end[]" required aria-label="候補終了日時">
         <input type="date" name="slot-date[]" required>
         <input type="time" name="slot-start[]" required>
         <span class="slot-tilde">〜</span>

@@ -260,6 +260,18 @@ def create():
 @login_required
 def invite():
     if request.method == 'POST':
+        raw_starts = request.form.getlist('slot-start[]')
+        raw_ends   = request.form.getlist('slot-end[]')
+
+        slots = []
+        for idx in range(max(len(raw_starts), len(raw_ends))):
+            start_raw = raw_starts[idx] if idx < len(raw_starts) else ''
+            end_raw   = raw_ends[idx] if idx < len(raw_ends) else ''
+            if not start_raw or not end_raw:
+                continue
+            try:
+                start_dt = datetime.strptime(start_raw, '%Y-%m-%dT%H:%M')
+                end_dt   = datetime.strptime(end_raw, '%Y-%m-%dT%H:%M')
         slot_dates  = request.form.getlist('slot-date[]')
         slot_starts = request.form.getlist('slot-start[]')
         slot_ends   = request.form.getlist('slot-end[]')
@@ -275,6 +287,7 @@ def invite():
                 flash('日付または時間の形式が正しくありません。', 'danger')
                 return redirect(request.url)
             if end_dt <= start_dt:
+                flash('終了日時は開始日時より後に設定してください。', 'warning')
                 flash('終了時間は開始時間より後に設定してください。', 'warning')
                 return redirect(request.url)
             slots.append({
