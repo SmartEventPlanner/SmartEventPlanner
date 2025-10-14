@@ -1,73 +1,178 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>スマートイベントプランナー</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: sans-serif;
-      /* background-color: #f9f9f9;  元の背景色はコメントアウトまたは削除 */
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      /* ----- ここから背景画像の設定 ----- */
-      background-image: url('https://i.imgur.com/HjhQS9O.png'); /* 例: Unsplashの画像URL */
-#      background-image: url('https://i.imgur.com/UI3L7My.png'); /* 例: Unsplashの画像URL */
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
-      /* ----- ここまで背景画像の設定 ----- */
-    }
-    header {
-      display: flex;
-      align-items: center;
-      padding: 1rem 2rem;
-      background-color: rgba(255, 255, 255, 0.9); /* 背景が透けるように少し透明度を追加 */
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .menu-title-container { display: flex; align-items: center; gap: 1rem; }
-    .menu-icon { display: flex; flex-direction: column; justify-content: space-between; width: 24px; height: 18px; cursor: pointer; }
-    .menu-icon span { height: 3px; background-color: #333; border-radius: 2px; }
-    .title { font-weight: bold; font-size: 1.1rem; }
-    main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-    }
-    .button-row { display: flex; justify-content: center; gap: 4rem; margin-bottom: 2rem; }
-    .btn {
-      padding: 1rem 2rem;
-      font-size: 1rem;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      background-color: rgba(0, 123, 255, 0.85); /* 少し透明度を追加 */
-      color: white;
-      text-decoration: none;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2); /* 影を追加して見やすく */
-    }
-    .btn:hover { background-color: rgba(0, 86, 179, 0.9); }
-    .btn-register { background-color: rgba(108, 117, 125, 0.85); }
-    .btn-register:hover { background-color: rgba(90, 98, 104, 0.9); }
-  </style>
-</head>
-<body>
-  <header>
-    <div class="menu-title-container">
-      <div class="menu-icon"><span></span><span></span><span></span></div>
-      <div class="title">スマートイベントプランナー</div>
-    </div>
-  </header>
+{% extends "base.html" %}
 
-  <main>
-    <div class="button-row">
-      <a href="/login" class="btn">ログイン</a>
-      <a href="/register" class="btn btn-register">新規登録</a>
+{% block title %}ようこそ | スマートイベントプランナー{% endblock %}
+
+{% block extra_head %}
+  {{ super() }}
+  <style>
+    .landing-card {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .landing-card::after {
+      content: '';
+      position: absolute;
+      inset: 12% auto -20% -20%;
+      width: 60%;
+      height: 120%;
+      background: radial-gradient(circle at center, rgba(14, 165, 233, 0.35), transparent 70%);
+      filter: blur(40px);
+      z-index: 0;
+    }
+
+    .landing-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 28px;
+      align-items: center;
+    }
+
+    .landing-copy h1 {
+      font-size: clamp(2.1rem, 2.6vw, 3rem);
+      line-height: 1.3;
+      margin-bottom: 1rem;
+    }
+
+    .landing-copy p {
+      font-size: 1.05rem;
+      margin-bottom: 1.8rem;
+      color: var(--text-secondary);
+    }
+
+    .hero-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 14px;
+    }
+
+    .hero-list li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.65);
+      backdrop-filter: blur(8px);
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .hero-list li::before {
+      content: '\2713';
+      color: var(--accent-strong);
+      font-weight: 700;
+    }
+
+    .orbital {
+      position: relative;
+      aspect-ratio: 4 / 5;
+      border-radius: 32px;
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.75), rgba(226, 232, 240, 0.35));
+      box-shadow: 0 35px 55px -30px rgba(15, 23, 42, 0.6);
+      overflow: hidden;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .orbital::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), transparent 40%);
+      mix-blend-mode: screen;
+    }
+
+    .orbital-header {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text-secondary);
+      font-weight: 700;
+    }
+
+    .orbital-date {
+      font-size: 2.8rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+
+    .orbital-events {
+      position: relative;
+      z-index: 1;
+      background: rgba(14, 165, 233, 0.14);
+      border-radius: var(--radius-md);
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: #0b3954;
+      font-weight: 600;
+    }
+
+    .feature-card {
+      background: rgba(15, 23, 42, 0.7);
+      color: var(--text-inverse);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+    }
+
+    .feature-card h3 {
+      color: inherit;
+      margin-bottom: 0.35rem;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="surface-card landing-card">
+    <div class="landing-grid">
+      <div class="landing-copy">
+        <span class="tag">SMART EVENT PLANNER</span>
+        <h1>チームの予定調整を<br>もっと美しく、もっとスマートに。</h1>
+        <p>ワンクリックで予定作成・共有・集計まで。<br>シンプルな操作で、参加希望の把握から最適な日時の決定までをスムーズに行えます。</p>
+        <div class="inline-actions">
+          <a class="btn btn-primary" href="{{ url_for('login') }}">ログイン</a>
+          <a class="btn btn-ghost" href="{{ url_for('register') }}">新規登録</a>
+        </div>
+      </div>
+      <div class="landing-visual">
+        <div class="orbital">
+          <div class="orbital-header">
+            <span>共有イベント</span>
+            <span>今週</span>
+          </div>
+          <div class="orbital-date">25</div>
+          <div class="orbital-events">
+            <div>09:30　キックオフミーティング</div>
+            <div>13:00　デザインレビュー</div>
+            <div>19:00　オンライン懇親会</div>
+          </div>
+        </div>
+      </div>
     </div>
-  </main>
-</body>
-</html>
+  </section>
+
+  <section class="card-section">
+    <article class="card-tile feature-card">
+      <h3>予定作成が直感的</h3>
+      <p>カレンダーと連動した美しいUIで、予定入力から共有までをわずか数クリックで完了。</p>
+    </article>
+    <article class="card-tile feature-card">
+      <h3>参加状況を自動集計</h3>
+      <p>招待者の出欠をリアルタイムで可視化し、最適な時間帯を自動でレコメンドします。</p>
+    </article>
+    <article class="card-tile feature-card">
+      <h3>安心の通知機能</h3>
+      <p>決定内容は出席者全員に自動通知。重要なイベントも確実に伝わります。</p>
+    </article>
+  </section>
+{% endblock %}
