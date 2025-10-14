@@ -491,6 +491,7 @@ def invite_list():
         categorized_sections=sections,
         total_events=total_events
     )
+    return render_template('invite_list.html', categorized_events=categorized)
 
 
 @app.route('/invites/<int:event_id>', methods=['POST'])
