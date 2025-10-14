@@ -259,7 +259,7 @@ def create():
 @app.route('/invite', methods=['GET', 'POST'])
 @login_required
 def invite():
-    if request.method == 'POST']:
+    if request.method == 'POST':
         # フロントから来る配列: slot-date[], slot-start[], slot-end[]
         slot_dates  = request.form.getlist('slot-date[]')
         slot_starts = request.form.getlist('slot-start[]')
@@ -293,7 +293,7 @@ def invite():
         slots.sort(key=lambda x: x["start"])
 
         db = get_db()
-        # イベント本体（とりあえず最初のスロットで代表開始/終了を入れておく）
+        # イベント本体（代表として最初のスロットを格納）
         cur = db.execute("""
             INSERT INTO events(organizer_id, title, start_datetime, end_datetime)
             VALUES(?, ?, ?, ?)
@@ -329,6 +329,7 @@ def invite():
 
     # GET
     return render_template('create-invite.html')
+
 
 
 # ────────────────────────── 参加回答 ──────────────────────────
