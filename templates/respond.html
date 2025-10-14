@@ -74,6 +74,7 @@
             {% for slot in slots %}
               <label class="slot-item">
                 <input type="checkbox" name="available_slots" value="{{ slot.value }}">
+                {{ slot.display }}
                 {{ slot.display }} 開始
               </label>
             {% endfor %}
