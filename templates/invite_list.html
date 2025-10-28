@@ -13,6 +13,7 @@
     </div>
 
     {% if total_events == 0 %}
+
       <div class="empty-state">
         <h3>まだ招待を作成していません</h3>
         <p>「新しい招待を作成」から候補日程を共有してみましょう。</p>
@@ -55,14 +56,7 @@
                       {% for invitee in ev.invitees %}
                         <label class="invitee-item">
                           <input type="checkbox" name="invitee_ids" value="{{ invitee.id }}">
-                          <span class="invitee-email">
-                            {% if invitee.name %}
-                              <strong>{{ invitee.name }}</strong><br>
-                              <small>{{ invitee.email }}</small>
-                            {% else %}
-                              {{ invitee.email }}
-                            {% endif %}
-                          </span>
+                          <span class="invitee-email">{{ invitee.email }}</span>
                           <span class="invitee-status status-{{ invitee.status }}">{{ invitee.status_label }}</span>
                         </label>
                       {% endfor %}
@@ -87,6 +81,7 @@
           </div>
         {% endif %}
       {% endfor %}
+
     {% endif %}
   </section>
 {% endblock %}

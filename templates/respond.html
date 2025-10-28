@@ -46,17 +46,6 @@
       display: flex;
       gap: 12px;
       justify-content: center;
-      flex-wrap: wrap;
-    }
-
-    .form-alert {
-      margin-top: 16px;
-      padding: 12px 14px;
-      border-radius: var(--radius-sm);
-      border: 1px solid rgba(248, 113, 113, 0.4);
-      background: rgba(254, 226, 226, 0.6);
-      color: #991b1b;
-      font-size: 0.9rem;
     }
   </style>
 {% endblock %}
@@ -66,40 +55,33 @@
 {% block content %}
   <section class="surface-card form-card respond-card">
     <h1>{{ event.title }}</h1>
-    <p>お名前を入力し、参加可否を選択してください。参加可能な日時があればチェックを入れて送信します。</p>
+    <p>参加可否を選択し、参加できる時間帯があればチェックを入れて送信してください。</p>
 
-    {% if error %}
-      <div class="form-alert" role="alert">{{ error }}</div>
-    {% endif %}
+    <div class="respond-actions" id="attendance-buttons">
+      <button type="button" class="btn btn-primary" onclick="chooseAttend()">参加する</button>
+      <form method="post" style="margin: 0;">
+        <input type="hidden" name="action" value="decline">
+        <button type="submit" class="btn btn-ghost">参加しない</button>
+      </form>
+    </div>
 
-    <form method="post" id="respond-form">
-      <input type="hidden" name="action" id="respond-action" value="{{ 'attend' if show_slots else '' }}">
-      <div class="input-field">
-        <label for="invitee-name">氏名</label>
-        <input type="text" id="invitee-name" name="invitee_name" value="{{ invitee_name or '' }}" required>
+    <form method="post" id="availability-form" style="display: none;">
+      <input type="hidden" name="action" value="attend">
+      <div class="slot-container">
+        {% for day, slots in time_slots.items() %}
+          <div class="slot-group">
+            <div class="slot-date">{{ day }}</div>
+            {% for slot in slots %}
+              <label class="slot-item">
+                <input type="checkbox" name="available_slots" value="{{ slot.value }}">
+                {{ slot.display }}
+                {{ slot.display }} 開始
+              </label>
+            {% endfor %}
+          </div>
+        {% endfor %}
       </div>
-
-      <div class="respond-actions" id="attendance-buttons" style="{{ 'display: none;' if show_slots else '' }}">
-        <button type="button" class="btn btn-primary" onclick="chooseAttend()">参加する</button>
-        <button type="button" class="btn btn-ghost" onclick="submitDecline()">参加しない</button>
-      </div>
-
-      <div id="availability-section" style="{{ '' if show_slots else 'display: none;' }}">
-        <div class="slot-container">
-          {% for day, slots in time_slots.items() %}
-            <div class="slot-group">
-              <div class="slot-date">{{ day }}</div>
-              {% for slot in slots %}
-                <label class="slot-item">
-                  <input type="checkbox" name="available_slots" value="{{ slot.value }}" {% if slot.value in selected_slots %}checked{% endif %}>
-                  {{ slot.display }}
-                </label>
-              {% endfor %}
-            </div>
-          {% endfor %}
-        </div>
-        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 24px;">希望日時を送信</button>
-      </div>
+      <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 24px;">希望日時を送信</button>
     </form>
   </section>
 {% endblock %}
@@ -107,37 +89,9 @@
 {% block extra_scripts %}
   {{ super() }}
   <script>
-    const respondForm = document.getElementById('respond-form');
-    const respondAction = document.getElementById('respond-action');
-    const nameInput = document.getElementById('invitee-name');
-    const attendanceButtons = document.getElementById('attendance-buttons');
-    const availabilitySection = document.getElementById('availability-section');
-
-    function ensureNameEntered() {
-      if (nameInput.value.trim()) {
-        return true;
-      }
-      nameInput.focus();
-      nameInput.reportValidity();
-      return false;
-    }
-
     function chooseAttend() {
-      if (!ensureNameEntered()) return;
-      respondAction.value = 'attend';
-      attendanceButtons.style.display = 'none';
-      availabilitySection.style.display = '';
-    }
-
-    function submitDecline() {
-      if (!ensureNameEntered()) return;
-      respondAction.value = 'decline';
-      respondForm.requestSubmit();
-    }
-
-    if (respondAction.value === 'attend') {
-      attendanceButtons.style.display = 'none';
-      availabilitySection.style.display = '';
+      document.getElementById('attendance-buttons').style.display = 'none';
+      document.getElementById('availability-form').style.display = 'block';
     }
   </script>
 {% endblock %}
