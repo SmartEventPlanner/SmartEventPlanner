@@ -1,160 +1,356 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>スマートイベントプランナー</title>
-<style>
-  /* ... (前回のCSSから変更なし) ... */
-  :root { --header-height: 64px; --sidebar-width: 250px; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; font-family: 'Segoe UI', 'Helvetica Neue', sans-serif; background: #f0f2f5; overflow-x: hidden; }
-  header { height: var(--header-height); background-color: #ffffff; display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; box-shadow: 0 2px 6px rgba(0,0,0,0.1); position: fixed; top: 0; left: 0; width: 100%; z-index: 1000; }
-  .menu-title-container { display: flex; align-items: center; gap: 1rem; }
-  .menu-icon { display: flex; flex-direction: column; justify-content: space-between; width: 24px; height: 18px; cursor: pointer; }
-  .menu-icon span { height: 3px; background-color: #333; border-radius: 2px; transition: all 0.3s; }
-  .title { font-size: 1.4rem; font-weight: 600; }
-  .header-actions .invite-btn { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; background-color: #007bff; color: white; border-radius: 50%; text-decoration: none; font-size: 28px; font-weight: 300; line-height: 1; transition: background-color 0.3s; }
-  .header-actions .invite-btn:hover { background-color: #0056b3; }
-  .sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar-width); height: 100%; background-color: #2c3e50; color: white; padding-top: var(--header-height); transform: translateX(-100%); transition: transform 0.3s ease-in-out; z-index: 900; }
-  .sidebar.show { transform: translateX(0); }
-  .sidebar nav ul { list-style: none; padding: 20px 0; }
-  .sidebar nav li a { display: block; padding: 15px 25px; color: white; text-decoration: none; font-size: 1.1rem; transition: background-color 0.2s; }
-  .sidebar nav li a:hover { background-color: #34495e; }
-  .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s; z-index: 899; }
-  .overlay.show { opacity: 1; visibility: visible; }
-  main { padding-top: var(--header-height); height: 100%; width: 100%; display: flex; justify-content: center; align-items: flex-start; overflow-y: auto; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin: 0; }
-  caption { height: 8vh; font-size: 3vh; background-color: #4CAF50; color: white; font-weight: bold; line-height: 8vh; }
-  th, td { border: 1px solid #ddd; text-align: left; /* 左揃えに変更 */ font-size: 1rem; padding: 8px; vertical-align: top; }
-  thead th { height: 6vh; padding: 1vh 0; text-align: center; }
-  tbody tr { height: 14vh; }
-  td .day-number { font-weight: bold; }
-  td.today .day-number { background-color: #ffc107; color: white; border-radius: 50%; width: 28px; height: 28px; display: inline-block; text-align: center; line-height: 28px; }
-  td:empty { background-color: #f8f8f8; }
-  th:nth-child(1), td:nth-child(1) .day-number { color: #e53935; } /* 日曜 */
-  th:nth-child(7), td:nth-child(7) .day-number { color: #1e88e5; } /* 土曜 */
-  /* ★★★ 新規追加: 予定表示用スタイル ★★★ */
-  .schedules { margin-top: 5px; font-size: 0.8rem; }
-  .schedule-item { background-color: #e3f2fd; color: #0d47a1; padding: 3px 5px; border-radius: 3px; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .schedule-time { font-weight: bold; margin-right: 5px; }
-</style>
-</head>
-<body>
-  <aside class="sidebar" id="sidebar">
-    <nav>
-      <ul>
-        <li><a href="{{ url_for('calendar') }}">カレンダー</a></li>
-        <li><a href="{{ url_for('create') }}">予定の作成</a></li>
-        <li><a href="{{ url_for('invite') }}">招待の作成</a></li>
-        <li><a href="{{ url_for('logout') }}">ログアウト</a></li>
-	<li><a href="{{ url_for('invite_list') }}">招待リスト</a></li>
-      </ul>
-    </nav>
-  </aside>
-  <div class="overlay" id="overlay"></div>
+{% extends "base.html" %}
 
-  <header>
-    <div class="menu-title-container">
-      <div class="menu-icon" id="menu-icon"><span></span><span></span><span></span></div>
-      <div class="title">スマートイベントプランナー</div>
-    </div>
-    <div class="header-actions">
-        <a href="/invite" class="invite-btn" title="招待を作成">+</a>
-    </div>
-  </header>
+{% block title %}カレンダー | スマートイベントプランナー{% endblock %}
 
-  <main>
-    <table>
-      <caption>2025年6月</caption>
-      <thead>
-        <tr>
-          <th>日</th><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th><th>土</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td id="day-1"><div class="day-number">1</div><div class="schedules"></div></td>
-          <td id="day-2"><div class="day-number">2</div><div class="schedules"></div></td>
-          <td id="day-3"><div class="day-number">3</div><div class="schedules"></div></td>
-          <td id="day-4"><div class="day-number">4</div><div class="schedules"></div></td>
-          <td id="day-5"><div class="day-number">5</div><div class="schedules"></div></td>
-          <td id="day-6"><div class="day-number">6</div><div class="schedules"></div></td>
-          <td id="day-7"><div class="day-number">7</div><div class="schedules"></div></td>
-        </tr>
-        <tr>
-            <td id="day-8"><div class="day-number">8</div><div class="schedules"></div></td>
-            <td id="day-9"><div class="day-number">9</div><div class="schedules"></div></td>
-            <td id="day-10"><div class="day-number">10</div><div class="schedules"></div></td>
-            <td id="day-11"><div class="day-number">11</div><div class="schedules"></div></td>
-            <td id="day-12"><div class="day-number">12</div><div class="schedules"></div></td>
-            <td id="day-13"><div class="day-number">13</div><div class="schedules"></div></td>
-            <td id="day-14"><div class="day-number">14</div><div class="schedules"></div></td>
-        </tr>
-        <tr>
-            <td id="day-15"><div class="day-number">15</div><div class="schedules"></div></td>
-            <td id="day-16"><div class="day-number">16</div><div class="schedules"></div></td>
-            <td id="day-17"><div class="day-number">17</div><div class="schedules"></div></td>
-            <td id="day-18"><div class="day-number">18</div><div class="schedules"></div></td>
-            <td id="day-19"><div class="day-number">19</div><div class="schedules"></div></td>
-            <td id="day-20"><div class="day-number">20</div><div class="schedules"></div></td>
-            <td id="day-21"><div class="day-number">21</div><div class="schedules"></div></td>
-        </tr>
-        <tr>
-            <td id="day-22"><div class="day-number">22</div><div class="schedules"></div></td>
-            <td id="day-23"><div class="day-number">23</div><div class="schedules"></div></td>
-            <td id="day-24"><div class="day-number">24</div><div class="schedules"></div></td>
-            <td id="day-25" class="today"><div class="day-number">25</div><div class="schedules"></div></td>
-            <td id="day-26"><div class="day-number">26</div><div class="schedules"></div></td>
-            <td id="day-27"><div class="day-number">27</div><div class="schedules"></div></td>
-            <td id="day-28"><div class="day-number">28</div><div class="schedules"></div></td>
-        </tr>
-        <tr>
-            <td id="day-29"><div class="day-number">29</div><div class="schedules"></div></td>
-            <td id="day-30"><div class="day-number">30</div><div class="schedules"></div></td>
-            <td></td><td></td><td></td><td></td><td></td>
-        </tr>
-      </tbody>
-    </table>
-  </main>
+{% block extra_head %}
+  {{ super() }}
+  <style>
+    .calendar-shell {
+      display: grid;
+      gap: 24px;
+    }
 
-  <script>
-    // サイドバーの開閉ロジック (変更なし)
-    document.addEventListener('DOMContentLoaded', function() {
-      const menuIcon = document.getElementById('menu-icon');
-      const sidebar = document.getElementById('sidebar');
-      const overlay = document.getElementById('overlay');
-      function closeSidebar() {
-        sidebar.classList.remove('show');
-        overlay.classList.remove('show');
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .calendar-nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.12);
+      padding: 8px 16px;
+      border-radius: 999px;
+    }
+
+    .nav-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      background: rgba(255, 255, 255, 0.9);
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 22px -18px rgba(15, 23, 42, 0.6);
+    }
+
+    .month-label {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .calendar-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 12px;
+      text-align: center;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .calendar-day {
+      min-height: 140px;
+      background: rgba(255, 255, 255, 0.94);
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: var(--shadow-sm);
+      position: relative;
+    }
+
+    .calendar-day::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+    }
+
+    .calendar-day.today {
+      border-color: var(--accent-strong);
+      box-shadow: 0 18px 38px -24px rgba(14, 165, 233, 0.55);
+    }
+
+    .calendar-day.empty {
+      background: rgba(255, 255, 255, 0.4);
+      border-style: dashed;
+      box-shadow: none;
+    }
+
+    .day-number {
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: var(--text-primary);
+    }
+
+    .day-number.weekend {
+      color: #dc2626;
+    }
+
+    .event-items {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .event-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      background: rgba(14, 165, 233, 0.16);
+      color: var(--text-primary);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .event-chip span {
+      font-weight: 700;
+      color: var(--accent-strong);
+    }
+
+    .upcoming-list {
+      display: grid;
+      gap: 14px;
+      margin-top: 12px;
+    }
+
+    .upcoming-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.94);
+      border-radius: var(--radius-md);
+      padding: 14px 18px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      box-shadow: var(--shadow-sm);
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .upcoming-item strong {
+      color: var(--text-primary);
+      font-size: 1.05rem;
+    }
+
+    .fab {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    .fab a {
+      border-radius: 999px;
+      padding: 0.85rem 1.3rem;
+      box-shadow: 0 24px 42px -24px rgba(14, 165, 233, 0.75);
+    }
+
+    @media (max-width: 960px) {
+      .calendar-weekdays,
+      .calendar-grid {
+        gap: 8px;
       }
-      menuIcon.addEventListener('click', () => {
-        sidebar.classList.toggle('show');
-        overlay.classList.toggle('show');
-      });
-      overlay.addEventListener('click', () => closeSidebar());
 
-      // ★★★ 新規追加: Pythonから渡された予定をカレンダーに表示する ★★★
-      const schedulesData = {{ schedules | tojson }};
-      schedulesData.forEach(schedule => {
-        // 日付から日 (day) を取得 (例: "2025-06-25" -> 25)
-        const day = new Date(schedule.event_date).getDate();
-        const cell = document.getElementById(`day-${day}`);
-        if (cell) {
-          const scheduleContainer = cell.querySelector('.schedules');
-          const scheduleElement = document.createElement('div');
-          scheduleElement.classList.add('schedule-item');
-          
-          let scheduleText = '';
-          if (!schedule.is_all_day && schedule.start_time) {
-            scheduleText += `<span class="schedule-time">${schedule.start_time}</span>`;
-          }
-          scheduleText += schedule.title;
-          scheduleElement.innerHTML = scheduleText;
-          scheduleContainer.appendChild(scheduleElement);
+      .calendar-day {
+        min-height: 120px;
+      }
+
+      .fab {
+        position: static;
+        flex-direction: row;
+        justify-content: flex-end;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="surface-card calendar-shell">
+    <div class="calendar-header">
+      <div>
+        <span class="tag">CALENDAR</span>
+        <h1 style="margin-top: 12px;">チームカレンダー</h1>
+      </div>
+      <div class="calendar-nav">
+        <button class="nav-btn" id="prev-month" aria-label="前の月">‹</button>
+        <div class="month-label" id="month-label"></div>
+        <button class="nav-btn" id="next-month" aria-label="次の月">›</button>
+      </div>
+    </div>
+
+    <div class="calendar-weekdays">
+      <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+    </div>
+    <div class="calendar-grid" id="calendar-grid"></div>
+  </section>
+
+  <section class="surface-card">
+    <h2>これからの予定</h2>
+    <div id="upcoming-list" class="upcoming-list"></div>
+  </section>
+
+  <div class="fab">
+    <a class="btn btn-primary" href="{{ url_for('create') }}">予定を追加</a>
+    <a class="btn btn-secondary" href="{{ url_for('invite') }}">招待を作成</a>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  {{ super() }}
+  <script>
+    const schedules = {{ schedules | tojson }};
+    const monthLabel = document.getElementById('month-label');
+    const calendarGrid = document.getElementById('calendar-grid');
+    const prevBtn = document.getElementById('prev-month');
+    const nextBtn = document.getElementById('next-month');
+    const upcomingList = document.getElementById('upcoming-list');
+
+    let current = new Date();
+    current.setDate(1);
+
+    function formatDateKey(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function renderCalendar() {
+      const year = current.getFullYear();
+      const month = current.getMonth();
+      monthLabel.textContent = `${year}年 ${month + 1}月`;
+
+      calendarGrid.innerHTML = '';
+      const firstDay = new Date(year, month, 1);
+      const startDay = firstDay.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      for (let i = 0; i < startDay; i++) {
+        const empty = document.createElement('div');
+        empty.className = 'calendar-day empty';
+        calendarGrid.appendChild(empty);
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'calendar-day';
+
+        const cellDate = new Date(year, month, day);
+        const dateKey = formatDateKey(cellDate);
+        const isWeekend = cellDate.getDay() === 0 || cellDate.getDay() === 6;
+        const isToday = dateKey === formatDateKey(new Date());
+        if (isToday) {
+          cell.classList.add('today');
         }
+
+        const number = document.createElement('div');
+        number.className = 'day-number' + (isWeekend ? ' weekend' : '');
+        number.textContent = day;
+        cell.appendChild(number);
+
+        const eventsWrapper = document.createElement('div');
+        eventsWrapper.className = 'event-items';
+
+        const dayEvents = schedules.filter(ev => ev.event_date === dateKey);
+        dayEvents.forEach(ev => {
+          const item = document.createElement('div');
+          item.className = 'event-chip';
+          const isAllDay = Number(ev.is_all_day) === 1;
+          const timeLabel = !isAllDay && ev.start_time ? ev.start_time.slice(0,5) : '終日';
+          item.innerHTML = `<span>${timeLabel}</span>${ev.title}`;
+          eventsWrapper.appendChild(item);
+        });
+
+        if (!dayEvents.length) {
+          const placeholder = document.createElement('div');
+          placeholder.style.color = 'var(--text-muted)';
+          placeholder.style.fontSize = '0.85rem';
+          placeholder.textContent = '予定なし';
+          eventsWrapper.appendChild(placeholder);
+        }
+
+        cell.appendChild(eventsWrapper);
+        calendarGrid.appendChild(cell);
+      }
+    }
+
+    function renderUpcoming() {
+      const now = new Date();
+      const normalizedSchedules = schedules.map(ev => {
+        const timePart = ev.start_time ? ev.start_time : '00:00';
+        return {
+          ...ev,
+          datetime: new Date(`${ev.event_date}T${timePart}`)
+        };
+      }).filter(ev => !isNaN(ev.datetime));
+
+      const upcoming = normalizedSchedules
+        .filter(ev => ev.datetime >= now)
+        .sort((a, b) => a.datetime - b.datetime)
+        .slice(0, 5);
+
+      upcomingList.innerHTML = '';
+      if (!upcoming.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.style.margin = '0';
+        empty.innerHTML = '<p>これからの予定はまだありません。</p>';
+        upcomingList.appendChild(empty);
+        return;
+      }
+
+      upcoming.forEach(ev => {
+        const item = document.createElement('div');
+        item.className = 'upcoming-item';
+        const date = new Date(ev.datetime);
+        const dateText = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 (${['日','月','火','水','木','金','土'][date.getDay()]})`;
+        const isAllDay = Number(ev.is_all_day) === 1;
+        const timeText = isAllDay ? '終日' : (ev.start_time ? ev.start_time.slice(0,5) : '終日');
+        item.innerHTML = `<div><strong>${ev.title}</strong><div style="font-size:0.85rem; color:var(--text-muted);">${dateText}</div></div><div>${timeText}</div>`;
+        upcomingList.appendChild(item);
       });
+    }
+
+    prevBtn.addEventListener('click', () => {
+      current.setMonth(current.getMonth() - 1);
+      renderCalendar();
     });
+
+    nextBtn.addEventListener('click', () => {
+      current.setMonth(current.getMonth() + 1);
+      renderCalendar();
+    });
+
+    renderCalendar();
+    renderUpcoming();
   </script>
-</body>
-</html>
+{% endblock %}
