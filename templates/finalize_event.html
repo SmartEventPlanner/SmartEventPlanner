@@ -1,60 +1,201 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>予定を確定</title>
-<style>
-  body{font-family:"Segoe UI",Tahoma,Helvetica,sans-serif;background:#f4f4f9;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;margin:0;padding:20px}
-  .card{background:#fff;padding:32px 40px;border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,.1);width:100%;max-width:660px}
-  h1{text-align:center;font-size:1.5rem;color:#333;margin-bottom:24px}
-  form{display:flex;flex-direction:column;gap:22px}
-  label{font-weight:600;margin-bottom:6px}
-  input[type="text"],textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;font-size:1rem}
-  textarea{resize:vertical;height:110px}
-  .slot-box{max-height:300px;overflow-y:auto;border:1px solid #ccc;border-radius:4px;padding:14px}
-  .slot-item{display:flex;align-items:center;margin-bottom:10px;font-size:.95rem}
-  .slot-item input{margin-right:10px}
-  .btn-primary{background:#007bff;color:#fff;border:none;padding:12px 0;border-radius:4px;font-size:1rem;font-weight:700;cursor:pointer;transition:.2s}
-  .btn-primary:hover{background:#0056b3}
-  .msg{text-align:center;color:#555}
-</style>
-</head>
-<body>
-  <div class="card">
-    <h1>「{{ event.title }}」予定確定</h1>
+{% extends "base.html" %}
+
+{% block title %}予定の確定 | スマートイベントプランナー{% endblock %}
+
+{% block extra_head %}
+  {{ super() }}
+  <style>
+    .slot-box {
+      max-height: 280px;
+      overflow-y: auto;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(255, 255, 255, 0.94);
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .slot-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      background: rgba(14, 165, 233, 0.1);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .ai-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .ai-status {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      min-height: 1.2em;
+    }
+
+    .ai-status.error {
+      color: #dc2626;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="surface-card form-card" style="max-width: 680px;">
+    <h1>「{{ event.title }}」予定の確定</h1>
     {% if not choices %}
-      <p class="msg">まだ参加者から候補日時が集まっていません。</p>
+      <div class="empty-state" style="margin-top: 24px;">
+        <h3>まだ参加希望が集まっていません</h3>
+        <p>出席者からの回答が揃い次第、再度この画面で確定できます。</p>
+      </div>
     {% else %}
-    <form method="post">
-      <!-- タイトル -->
-      <div>
-        <label for="final_title">確定タイトル</label>
-        <input type="text" id="final_title" name="final_title" value="{{ event.title }}" required>
-      </div>
-
-      <!-- 候補日時 -->
-      <div>
-        <label>確定する日時を選択</label>
-        <div class="slot-box">
-          {% for opt in choices %}
-          <div class="slot-item">
-            <input type="radio" id="slot-{{ loop.index }}" name="final_datetime" value="{{ opt.iso }}" required>
-            <label for="slot-{{ loop.index }}">{{ opt.display }}（{{ opt.count }}人 参加可）</label>
-          </div>
-          {% endfor %}
+      <form method="post">
+        <div class="input-field">
+          <label for="final_title">確定タイトル</label>
+          <input type="text" id="final_title" name="final_title" value="{{ event.title }}" required>
         </div>
-      </div>
 
-      <!-- カスタム本文 -->
-      <div>
-        <label for="custom_message">メール本文 (任意)</label>
-        <textarea id="custom_message" name="custom_message" placeholder="参加者への連絡事項を入力してください"></textarea>
-      </div>
+        <div class="input-field">
+          <label>確定する日時</label>
+          <div class="slot-box">
+            {% for opt in choices %}
+              <label class="slot-item" for="slot-{{ loop.index }}">
+                <input type="radio" id="slot-{{ loop.index }}" name="final_datetime" value="{{ opt.iso }}" data-display="{{ opt.display }}" data-count="{{ opt.count }}" required>
+                {{ opt.display }}（{{ opt.count }}名 参加可）
+              </label>
+            {% endfor %}
+          </div>
+        </div>
 
-      <button type="submit" class="btn-primary">この内容で確定 &amp; メール送信</button>
-    </form>
+        <div class="input-field">
+          <label for="custom_message">メール本文 (任意)</label>
+          <div class="ai-actions">
+            <button type="button" class="btn btn-secondary" id="ai-generate-message">本文を自動生成</button>
+            <button type="button" class="btn btn-ghost" id="ai-thinking-mode">AI思考モード</button>
+          </div>
+          <textarea id="custom_message" name="custom_message" placeholder="参加者への連絡事項を入力してください"></textarea>
+          <small style="color: var(--text-muted); display: block; margin-top: 6px;">AIが入力した本文は送信前に編集できます。</small>
+        </div>
+
+        <input type="hidden" name="include_default_footer" id="include-default-footer" value="0">
+        <div id="ai-status" class="ai-status" aria-live="polite"></div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%;">この内容で確定 &amp; メール送信</button>
+      </form>
     {% endif %}
-  </div>
-</body>
-</html>
+  </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  {{ super() }}
+  <script>
+    const aiChoices = {{ choices | tojson }};
+    const eventId = {{ event.id }};
+    const messageField = document.getElementById('custom_message');
+    const aiStatus = document.getElementById('ai-status');
+    const aiMessageBtn = document.getElementById('ai-generate-message');
+    const aiThinkingBtn = document.getElementById('ai-thinking-mode');
+    const footerInput = document.getElementById('include-default-footer');
+    const cssEscape = (value) => {
+      const str = value == null ? '' : String(value);
+      return window.CSS && CSS.escape ? CSS.escape(str) : str.replace(/"/g, '\"');
+    };
+
+    function setStatus(text, isError = false) {
+      if (!aiStatus) return;
+      aiStatus.textContent = text || '';
+      aiStatus.classList.toggle('error', !!isError);
+    }
+
+    function getSelectedSlot() {
+      return document.querySelector('input[name="final_datetime"]:checked');
+    }
+
+    if (aiMessageBtn) {
+      aiMessageBtn.addEventListener('click', async () => {
+        const selected = getSelectedSlot();
+        if (!selected) {
+          setStatus('先に確定する候補日時を選択してください。', true);
+          return;
+        }
+        setStatus('AIが本文を生成しています…');
+        try {
+          const countValue = selected.dataset.count;
+          const payload = {
+            event_id: eventId,
+            slot: {
+              iso: selected.value,
+              display: selected.dataset.display,
+              count: countValue && countValue !== 'None' ? Number(countValue) : null,
+            },
+          };
+          const res = await fetch('{{ url_for('api_generate_final_message') }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.message) {
+            throw new Error(data.error || '本文の生成に失敗しました。');
+          }
+          messageField.value = data.message;
+          footerInput.value = '0';
+          const note = data.fallback ? '（自動生成の簡易文を設定しました）' : '';
+          setStatus('本文を入力しました。' + (data.warning ? ` 注意: ${data.warning}` : '') + note);
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message || '本文の生成に失敗しました。', true);
+        }
+      });
+    }
+
+    if (aiThinkingBtn) {
+      aiThinkingBtn.addEventListener('click', async () => {
+        setStatus('AIが最適な候補を検討しています…');
+        try {
+          const res = await fetch('{{ url_for('api_plan_finalization') }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_id: eventId, choices: aiChoices }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.selected_iso) {
+            throw new Error(data.error || '候補の選択に失敗しました。');
+          }
+
+          const radio = document.querySelector(`input[name="final_datetime"][value="${cssEscape(data.selected_iso)}"]`);
+          if (radio) {
+            radio.checked = true;
+          }
+
+          if (data.message) {
+            messageField.value = data.message;
+            footerInput.value = '0';
+          }
+
+          let statusText = 'AIが候補と本文を提案しました。';
+          if (data.reason) {
+            statusText += ` 理由: ${data.reason}`;
+          }
+          if (data.warning) {
+            statusText += ` 注意: ${data.warning}`;
+          }
+          if (data.fallback) {
+            statusText += '（自動選択された候補です）';
+          }
+          setStatus(statusText);
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message || 'AI思考モードに失敗しました。', true);
+        }
+      });
+    }
+  </script>
+{% endblock %}
