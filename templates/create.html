@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}予定の作成 | スマートイベントプランナー{% endblock %}
+
+{% block extra_head %}
+  {{ super() }}
+  <style>
+    .time-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 18px;
+      align-items: end;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="surface-card">
+    <h1>予定を作成</h1>
+    <p>チームと共有したい予定の情報を入力してください。必要に応じて時間や場所、詳細メモも追加できます。</p>
+    <form action="{{ url_for('create') }}" method="post">
+      <div class="input-field">
+        <label for="event-title">タイトル</label>
+        <input type="text" id="event-title" name="event-title" placeholder="例：チームミーティング" required>
+      </div>
+
+      <div class="form-grid">
+        <div class="input-field">
+          <label for="event-date">日付</label>
+          <input type="date" id="event-date" name="event-date" required>
+        </div>
+        <label class="checkbox-field" style="margin-top: 32px;">
+          <input type="checkbox" id="all-day" name="all-day">
+          終日イベントとして登録する
+        </label>
+      </div>
+
+      <div id="time-input-container" class="time-grid">
+        <div class="input-field">
+          <label for="start-time">開始時刻</label>
+          <input type="time" id="start-time" name="start-time">
+        </div>
+        <div class="input-field">
+          <label for="end-time">終了時刻</label>
+          <input type="time" id="end-time" name="end-time">
+        </div>
+      </div>
+
+      <div class="input-field">
+        <label for="event-location">場所</label>
+        <input type="text" id="event-location" name="event-location" placeholder="例：第3会議室、オンライン">
+      </div>
+
+      <div class="input-field">
+        <label for="notification-time">通知</label>
+        <select id="notification-time" name="notification-time">
+          <option value="none">通知なし</option>
+          <option value="15m">15分前</option>
+          <option value="30m">30分前</option>
+          <option value="1h">1時間前</option>
+          <option value="1d" selected>1日前</option>
+        </select>
+      </div>
+
+      <div class="input-field">
+        <label for="event-description">詳細・メモ</label>
+        <textarea id="event-description" name="event-description" rows="5" placeholder="共有事項や持ち物などを入力してください"></textarea>
+      </div>
+
+      <div class="inline-actions" style="justify-content: flex-end;">
+        <button type="button" class="btn btn-ghost" onclick="window.history.back();">キャンセル</button>
+        <button type="submit" class="btn btn-primary">保存する</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  {{ super() }}
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const allDayCheckbox = document.getElementById('all-day');
+      const timeInputContainer = document.getElementById('time-input-container');
+
+      const toggleTimeInputs = () => {
+        timeInputContainer.style.display = allDayCheckbox.checked ? 'none' : 'grid';
+      };
+
+      allDayCheckbox.addEventListener('change', toggleTimeInputs);
+      toggleTimeInputs();
+    });
+  </script>
+{% endblock %}

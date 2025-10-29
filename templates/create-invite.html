@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}招待の作成 | スマートイベントプランナー{% endblock %}
+
+{% block extra_head %}
+  {{ super() }}
+  <style>
+    .invite-layout {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 22px;
+    }
+
+    .slot-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .slot-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 14px;
+      border-radius: var(--radius-md);
+      background: rgba(14, 165, 233, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    .slot-row input[type="date"],
+    .slot-row input[type="time"] {
+      width: 100%;
+    }
+
+    .slot-row .slot-remove {
+      padding: 0.55rem 0.8rem;
+      visibility: visible;
+    }
+
+    .slot-row.single .slot-remove {
+      visibility: hidden;
+    }
+
+    .email-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .email-input-group {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .email-input-group input {
+      flex: 1;
+    }
+
+    .email-input-group .btn {
+      padding: 0.6rem 1rem;
+    }
+
+    .help-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      margin-left: 6px;
+      border-radius: 50%;
+      background: rgba(14, 165, 233, 0.18);
+      color: var(--accent-strong);
+      font-size: 0.8rem;
+      cursor: help;
+      position: relative;
+    }
+
+    .help-icon::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 50%;
+      transform: translate(-50%, -10px);
+      background: rgba(15, 23, 42, 0.92);
+      color: var(--text-inverse);
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      line-height: 1.4;
+      width: max-content;
+      max-width: 240px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      box-shadow: var(--shadow-lg);
+      white-space: normal;
+    }
+
+    .help-icon:hover::after,
+    .help-icon:focus-visible::after {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="surface-card">
+    <h1>招待を作成</h1>
+    <p>参加候補の日時を複数登録し、参加者に共有します。確定したい候補を追加してください。</p>
+    <form id="invitation-form" action="{{ url_for('invite') }}" method="post">
+      <div class="input-field">
+        <label for="event-title">予定のタイトル</label>
+        <input type="text" id="event-title" name="event-title" required>
+      </div>
+
+      <div class="input-field">
+        <label for="slot-list">候補日時
+          <span class="help-icon" tabindex="0" data-tooltip="候補日を追加し、それぞれに開始と終了の時間を設定できます。時間を空欄にすると終日候補として扱われます。">i</span>
+        </label>
+        <div id="slot-list" class="slot-list">
+          <div class="slot-row single" data-slot-row>
+            <input type="date" name="slot-date[]" required aria-label="候補日">
+            <input type="time" name="slot-start[]" aria-label="開始時間">
+            <input type="time" name="slot-end[]" aria-label="終了時間">
+            <button type="button" class="btn btn-ghost slot-remove" onclick="removeSlotRow(this)" aria-label="候補を削除">ー</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost" style="margin-top: 12px;" onclick="addSlotRow()">候補を追加</button>
+      </div>
+
+      <div class="invite-layout">
+        <div class="input-field">
+          <label>招待するメールアドレス</label>
+          <div id="email-list" class="email-list">
+            <div class="email-input-group">
+              <input type="email" name="emails[]" placeholder="guest@example.com" required>
+              <button type="button" class="btn btn-secondary" onclick="addEmailInput()">＋</button>
+            </div>
+          </div>
+        </div>
+        <div class="input-field">
+          <label for="deadline">入力期限</label>
+          <input type="datetime-local" id="deadline" name="deadline" required>
+          <small style="color: var(--text-muted);">入力期限は記録のみで、送信時に共有されます。</small>
+        </div>
+      </div>
+
+      <div class="inline-actions" style="justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary">招待を送信</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  {{ super() }}
+  <script>
+    function updateSlotRowStates() {
+      const rows = document.querySelectorAll('#slot-list [data-slot-row]');
+      rows.forEach(row => row.classList.remove('single'));
+      if (rows.length === 1) {
+        rows[0].classList.add('single');
+      }
+    }
+
+    function createSlotRow() {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'slot-row';
+      wrapper.setAttribute('data-slot-row', '');
+      wrapper.innerHTML = `
+        <input type="date" name="slot-date[]" required aria-label="候補日">
+        <input type="time" name="slot-start[]" aria-label="開始時間">
+        <input type="time" name="slot-end[]" aria-label="終了時間">
+        <button type="button" class="btn btn-ghost slot-remove" onclick="removeSlotRow(this)" aria-label="候補を削除">ー</button>
+      `;
+      return wrapper;
+    }
+
+    function addSlotRow() {
+      const slotList = document.getElementById('slot-list');
+      slotList.appendChild(createSlotRow());
+      updateSlotRowStates();
+    }
+
+    function removeSlotRow(button) {
+      const row = button.closest('[data-slot-row]');
+      const slotList = document.getElementById('slot-list');
+      if (slotList.children.length > 1) {
+        row.remove();
+      }
+      updateSlotRowStates();
+    }
+
+    function addEmailInput() {
+      const emailList = document.getElementById('email-list');
+      const wrapper = document.createElement('div');
+      wrapper.className = 'email-input-group';
+      wrapper.innerHTML = `
+        <input type="email" name="emails[]" placeholder="guest@example.com" required>
+        <button type="button" class="btn btn-ghost" onclick="removeEmailInput(this)">ー</button>
+      `;
+      emailList.appendChild(wrapper);
+    }
+
+    function removeEmailInput(button) {
+      const group = button.parentElement;
+      group.remove();
+    }
+
+    document.addEventListener('DOMContentLoaded', updateSlotRowStates);
+  </script>
+{% endblock %}

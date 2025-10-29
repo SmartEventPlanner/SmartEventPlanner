@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}招待リスト | スマートイベントプランナー{% endblock %}
+
+{% block content %}
+  <section class="surface-card">
+    <div class="inline-actions" style="justify-content: space-between; align-items: baseline; margin-bottom: 18px;">
+      <div>
+        <span class="tag">INVITES</span>
+        <h1 style="margin-top: 12px;">送信した招待</h1>
+      </div>
+      <a class="btn btn-primary" href="{{ url_for('invite') }}">新しい招待を作成</a>
+    </div>
+
+    {% if total_events == 0 %}
+      <div class="empty-state">
+        <h3>まだ招待を作成していません</h3>
+        <p>「新しい招待を作成」から候補日程を共有してみましょう。</p>
+      </div>
+    {% else %}
+      {% for section in categorized_sections %}
+        {% if section.entries %}
+          <div class="event-section">
+            <div class="section-header">
+              <h2>{{ section.title }}</h2>
+              <p class="section-description">{{ section.description }}</p>
+            </div>
+
+            {% for ev in section.entries %}
+              <article class="invite-card">
+                <header>
+                  <div>
+                    <h3>{{ ev.title }}</h3>
+                    <div class="meta-row">
+                      <span class="meta-item">作成日: {{ ev.created_on }}</span>
+                      <span class="meta-item">開催予定: {{ ev.start_display }}{% if ev.end_display %} 〜 {{ ev.end_display }}{% endif %}</span>
+                    </div>
+                    <div class="meta-row">
+                      <span class="meta-item">参加: {{ ev.attending }}名</span>
+                      <span class="meta-item">未回答: {{ ev.pending }}名</span>
+                      <span class="meta-item">招待総数: {{ ev.total }}名</span>
+                    </div>
+                  </div>
+                  <div class="inline-actions">
+  <a class="muted-link" href="{{ url_for('event_results', event_id=ev.id) }}">詳細を見る</a>
+
+  {% if section.key == 'pending' %}
+    <a class="muted-link" href="{{ url_for('finalize_event', event_id=ev.id) }}">予定決定へ</a>
+  {% endif %}  {# ← これを追加（pending の if を閉じる） #}
+
+  {# ここからメール送信ボタン #}
+  {% if section.key in ['confirmed', 'past'] %}
+    <a class="btn btn-sm btn-outline-primary"
+       href="{{ url_for('email_event_group', event_id=ev.id) }}">
+      連絡メール送信
+    </a>
+  {% endif %}
+</div>
+
+                </header>
+
+                <form method="post" action="{{ url_for('manage_invitees', event_id=ev.id) }}" class="invite-management">
+                  <div class="invitee-grid">
+                    {% if ev.invitees %}
+                      {% for invitee in ev.invitees %}
+                        <label class="invitee-item">
+                          <input type="checkbox" name="invitee_ids" value="{{ invitee.id }}">
+                          <div class="invitee-details">
+                            <span class="invitee-email">
+                              {% if invitee.name %}
+                                <strong>{{ invitee.name }}</strong><br>
+                                <small>{{ invitee.email }}</small>
+                              {% else %}
+                                {{ invitee.email }}
+                              {% endif %}
+                            </span>
+                            <div class="invitee-responses">
+                              {% if invitee.status == 'declined' %}
+                                <span class="response-pill response-declined">不参加</span>
+                              {% elif invitee.responses %}
+                                <ul>
+                                  {% for slot in invitee.responses %}
+                                    <li>{{ slot }}</li>
+                                  {% endfor %}
+                                </ul>
+                              {% elif invitee.status == 'pending' %}
+                                <span class="muted">回答待ち</span>
+                              {% else %}
+                                <span class="muted">回答内容なし</span>
+                              {% endif %}
+                              {% if invitee.responded_display %}
+                                <span class="invitee-timestamp">回答日時: {{ invitee.responded_display }}</span>
+                              {% endif %}
+                            </div>
+                          </div>
+                          <span class="invitee-status status-{{ invitee.status }}">{{ invitee.status_label }}</span>
+                        </label>
+                      {% endfor %}
+                    {% else %}
+                      <p class="muted">まだ招待済みのメールアドレスはありません。</p>
+                    {% endif %}
+                  </div>
+
+                  <div class="form-grid">
+                    <div class="form-field">
+                      <label for="new-emails-{{ ev.id }}">メールアドレスを追加</label>
+                      <textarea id="new-emails-{{ ev.id }}" name="new_emails" rows="2" placeholder="例）example@example.com&#10;複数の場合は改行またはカンマで区切って入力"></textarea>
+                    </div>
+                    <div class="form-actions">
+                      <button class="btn btn-secondary" type="submit" name="action" value="resend" {% if not ev.invitees %}disabled{% endif %}>選択した宛先に再送</button>
+                      <button class="btn btn-primary" type="submit" name="action" value="add">追加した宛先に送信</button>
+                    </div>
+                  </div>
+                </form>
+              </article>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  </section>
+{% endblock %}
