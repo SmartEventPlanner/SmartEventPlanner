@@ -12,6 +12,7 @@ import html
 import logging
 import uuid
 import hashlib
+from typing import Optional
 
 import requests
 from flask import (Flask, render_template, request, flash, redirect,
@@ -196,6 +197,22 @@ def init_db():
             db.execute('ALTER TABLE invitees ADD COLUMN name TEXT')
 
         db.commit()
+
+# ──────────────────────────  ──────────────────────────
+
+
+def build_default_final_body(title: str, start_dt: datetime, participant_count: Optional[int] = None) -> str:
+    """
+    決定メールの本文（テキストのみ、フッター含めない）
+    - finalize_event の POST で必要ならフッターを追加するので、ここでは入れない
+    """
+    lines = [
+        f"「{title}」は {start_dt.strftime('%Y年%m月%d日 %H:%M')} に開催いたします。",
+    ]
+    if participant_count is not None:
+        lines.append(f"参加可能と回答：{participant_count}名")
+    lines.append("必要な準備があれば各自で進めてください。")
+    return "\n".join(lines)
 
 
 # ────────────────────────── 認証デコレーター ──────────────────────────
@@ -726,7 +743,7 @@ def respond(token):
         for row in slot_rows:
             start_dt = datetime.fromisoformat(row['start_datetime'])
             end_dt   = datetime.fromisoformat(row['end_datetime'])
-            day_key = ja_date_with_weekday(start_dt)
+            day_key = fmt_ja_date(start_dt)
             slots.setdefault(day_key, [])
             slots[day_key].append({
                 'value': row['start_datetime'],
@@ -1139,65 +1156,49 @@ def manage_invitees(event_id):
 @app.route('/api/ai/generate-final-message', methods=['POST'])
 @login_required
 def api_generate_final_message():
+    """
+    選択された日時だけを使って、AIに「本文のみ」を生成させるエンドポイント。
+    - フロントからは { event_id, slot: { iso: "YYYY-MM-DDTHH:MM:SS" } } を送る
+    - イベント名や参加可能人数などは AI に送らない（プライバシー最小化）
+    - 失敗時はローカル定型文でフォールバック
+    """
+    # レート制限
     blocked, wait = _throttle(f"genmsg:{session['user_id']}", 3.0)
     if blocked:
         return {'error': f'リクエストが多すぎます。{wait}秒後にお試しください。'}, 429
+
+    # 入力取得
     data = request.get_json(silent=True) or {}
     event_id = data.get('event_id')
     slot = data.get('slot') or {}
-    slot_iso = slot.get('iso')
+    slot_iso = (slot.get('iso') or '').strip()
 
     if not event_id or not slot_iso:
         return {'error': '必要な情報が不足しています。'}, 400
 
+    # 認可（自分のイベントか）
     db = get_db()
-    event = db.execute(
-        'SELECT * FROM events WHERE id=? AND organizer_id=?',
+    ev = db.execute(
+        'SELECT id FROM events WHERE id=? AND organizer_id=?',
         (event_id, session['user_id'])
     ).fetchone()
-    if not event:
-        return {'error': 'イベントが見つかりません。'}, 404
+    if not ev:
+        return {'error': 'イベントが見つからないか、権限がありません。'}, 404
 
+    # 日時パース
     try:
         slot_dt = datetime.fromisoformat(slot_iso)
-    except ValueError:
+    except Exception:
         return {'error': '日時の形式が正しくありません。'}, 400
 
-    slot_display = slot.get('display') or format_japanese_datetime(slot_iso)
-    participant_count = slot.get('count')
-    count_line = f"参加可能と回答した人数: {participant_count}名\n" if participant_count is not None else ''
-
-    prompt = (
-        "あなたは日本語で丁寧なイベント案内文を作成するAIアシスタントです。\n"
-        f"イベント名: {event['title']}\n"
-        f"確定予定日時: {slot_dt.strftime('%Y年%m月%d日 %H:%M')}\n"
-        f"{count_line}"
-        "条件:\n"
-        "- 主催者として参加者へ決定した日時を共有する短い本文を作成する。\n"
-        "- HTMLタグを使わずテキストのみで回答する。\n"
-        "- 「当日のご参加をお待ちしております。」という文言は入れない。\n"
-        "- 2〜3文で、参加者への感謝や当日の連絡事項があれば触れる。\n"
-        "本文:"
-    )
-
-    message, err = call_gemini(prompt, temperature=0.5)
-    if message:
-        _ai_log("api_generate_final_message_ok")
-        return {'message': message.strip()}
-
-
-    fallback = (
-        f"{slot_display} に開催いたします。"
-        "ご参加予定の方は必要な準備があれば各自で進めてください。"
-    )
-    response = {'message': fallback, 'fallback': True}
-    _ai_log("api_generate_final_message_fallback", warning=err)
-
-    if err:
-        response['warning'] = err
-
-    return response
-
+    ev = get_db().execute(
+        'SELECT title FROM events WHERE id=? AND organizer_id=?',
+        (event_id, session['user_id'])
+    ).fetchone()
+    title = ev['title'] if ev else 'イベント'
+    message = build_default_final_body(title, slot_dt)  # 1〜2行の定型文
+    _ai_log("local_message_generated", event_id=event_id, slot_iso=slot_iso)
+    return {'message': message, 'fallback': True, 'source': 'local'}
 
 @app.route('/api/ai/plan-finalization', methods=['POST'])
 @login_required
@@ -1232,53 +1233,62 @@ def api_plan_finalization():
             lines.append(f"{idx}. {display} — {count}名が参加可能")
 
     prompt = (
-        "あなたはイベント主催者を支援するAIです。以下の候補日時と参加可能人数から最適な開催日時を選び、"
-        "参加者に送る短い本文を提案してください。\n"
+        "あなたはイベント主催者を支援するAIです。"
+        "参加者に送る本文を提案してください。\n"
         f"イベント名: {event['title']}\n"
-        "候補一覧:\n"
-        + "\n".join(lines) + "\n"
-        "出力形式:\n"
         "{\n"
-        "  \"selected_iso\": ISO8601 形式の日時文字列,\n"
-        "  \"message\": 日本語テキスト (HTMLタグなし、2〜3文、フッターに「当日のご参加をお待ちしております。」を含めない),\n"
-        "  \"reason\": 選択理由を一文で\n"
-        "}\n"
-        "JSON だけを出力してください。"
+        "  \"message\": \"日本語テキスト（HTMLタグなし・2〜3文・『当日のご参加をお待ちしております。』は入れない）\",\n"
+        "}"
     )
 
-    message, err = call_gemini(prompt, temperature=0.2)
-    parsed = extract_json_block(message) if message else None
+    # --- AI呼び出し ---
+    text, err = call_gemini(prompt, temperature=0.4)
+    ai_used = False
+    selected_iso = None
+    msg_from_ai = None
+    reason = None
 
-    iso_values = {c.get('iso') for c in choices if c.get('iso')}
-    if parsed and parsed.get('selected_iso') in iso_values:
-        _ai_log("api_plan_finalization_ok", selected_iso=parsed.get('selected_iso'))
+    if text:
+        obj = extract_json_block(text)
+        if isinstance(obj, dict):
+            selected_iso = (obj.get('selected_iso') or '').strip()
+            msg_from_ai = (obj.get('message') or '').strip()
+            reason = (obj.get('reason') or '').strip()
+            ai_used = True
+
+    # 候補に含まれていないISOが来た場合はフォールバック
+    iso_set = {c.get('iso') for c in choices if c.get('iso')}
+    if not selected_iso or selected_iso not in iso_set:
+        best_choice = max(choices, key=lambda c: (c.get('count') or 0, c.get('iso') or ''))
+        selected_iso = best_choice.get('iso')
+        if not msg_from_ai:
+            # 本文は定型文で補完
+            sel_dt = datetime.fromisoformat(selected_iso)
+            msg_from_ai = build_default_final_body(event['title'], sel_dt, participant_count=best_choice.get('count'))
+        if not reason:
+            reason = '参加可能人数が最も多い候補を選択しました。'
         return {
-            'selected_iso': parsed['selected_iso'],
-            'message': (parsed.get('message') or '').strip(),
-            'reason': (parsed.get('reason') or '').strip(),
+            'selected_iso': selected_iso,
+            'message': msg_from_ai,
+            'reason': reason,
+            'fallback': True,
+            'warning': err if err else None
         }
 
+    # AIが正常応答：本文の禁止フレーズを念のため除去
+    if msg_from_ai:
+        msg_from_ai = msg_from_ai.replace('当日のご参加をお待ちしております。', '').strip()
+    else:
+        sel_dt = datetime.fromisoformat(selected_iso)
+        msg_from_ai = build_default_final_body(event['title'], sel_dt)
 
-
-    best_choice = max(choices, key=lambda c: (c.get('count') or 0, c.get('iso') or ''))
-    fallback_iso = best_choice.get('iso') or next((c.get('iso') for c in choices if c.get('iso')), '')
-    fallback_display = format_japanese_datetime(fallback_iso) if fallback_iso else '参加率の高い候補'
-    fallback_message = (
-        f"{fallback_display} に開催いたします。"
-        "詳細が決まり次第、改めて共有いたします。"
-        if fallback_iso
-        else "参加率の高い候補を基に最適な日時を確保しました。詳細が決まり次第、改めて共有いたします。"
-    )
-    response = {
-        'selected_iso': fallback_iso,
-        'message': fallback_message,
-        'reason': '参加可能人数が最も多い候補を自動的に選択しました。',
-        'fallback': True,
+    return {
+        'selected_iso': selected_iso,
+        'message': msg_from_ai,
+        'reason': reason or 'AI提案',
+        'fallback': not ai_used,
+        'warning': err if err and ai_used is False else None
     }
-    if err:
-        response['warning'] = err
-    return response
-
 
 # ────────────────────────── 予定確定 ──────────────────────────
 @app.route('/event/<int:event_id>/finalize', methods=['GET', 'POST'])
@@ -1524,16 +1534,9 @@ def email_event_group(event_id):
 if __name__ == '__main__':
     init_db()
 
-    # 証明書と秘密鍵（パスは実態に合わせて絶対パス推奨）
-    ssl_context = (
-        'smarteventplanner.coreone.work-crt.pem',   # サーバー証明書
-        'smarteventplanner.coreone.work-key.pem',   # 秘密鍵
+    app.run(
+        host='0.0.0.0',  # 外部公開するなら 0.0.0.0
+        port=6000,
+        debug=False      # 本番は False 推奨
     )
 
-    # ポートはそのまま 5000
-    app.run(
-        host='0.0.0.0',        # 外部公開するなら 0.0.0.0 が便利
-        port=5000,
-        ssl_context=ssl_context,
-        debug=False             # 本番で使う場合は False に
-    )
