@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h3>連絡メール送信 — {{ event.title }}</h3>
+  <p class="text-muted">
+    開催日時:
+    {% if event.start_datetime %}
+      {{ event.start_datetime[:16]|replace('T',' ') }}〜
+    {% else %}
+      未設定
+    {% endif %}
+  </p>
+
+  <form method="post">
+    <div class="mb-3">
+      <label class="form-label">送信対象</label>
+      <div class="form-check">
+        <input class="form-check-input" type="radio" name="group" id="g1" value="attending" checked>
+        <label class="form-check-label" for="g1">参加者のみ（attending）</label>
+      </div>
+      <div class="form-check">
+        <input class="form-check-input" type="radio" name="group" id="g2" value="non_attending">
+        <label class="form-check-label" for="g2">非参加者のみ（未回答・不参加）</label>
+      </div>
+      <div class="form-check">
+        <input class="form-check-input" type="radio" name="group" id="g3" value="all">
+        <label class="form-check-label" for="g3">全員（参加者＋非参加者）</label>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">件名</label>
+      <input type="text" name="subject" class="form-control" value="{{ default_subject }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">本文（テキスト。改行は自動的に改行扱いになります）</label>
+      <textarea name="body" rows="8" class="form-control">{{ default_body_text }}</textarea>
+    </div>
+
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="include_event_block" id="include_event_block" value="1" checked>
+      <label class="form-check-label" for="include_event_block">
+        本文先頭にイベント情報（タイトル・日時）を自動挿入する
+      </label>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary">送信する</button>
+      <a href="{{ url_for('invite_list') }}" class="btn btn-secondary">戻る</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
