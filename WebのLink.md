@@ -1,1 +1,0 @@
-# http://smarteventplanner.coreone.work/
